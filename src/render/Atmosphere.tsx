@@ -1,18 +1,15 @@
 /**
- * Skumring, kaldt blått omgivelseslys, tett eksponentiell tåke.
- * Tåka er både stemning og culling — kort sikt er meningen.
+ * Himmel, omgivelseslys og eksponentiell tåke, alt fra stemningen.
+ * Tåka er både stemning og culling — kort sikt er meningen, tynnere om dagen.
  */
 
-import { useMemo } from 'react'
-import { moodAt } from './palette'
+import type { Mood } from './palette'
 
-export function Atmosphere({ timeOfDay, fogDensity }: { timeOfDay: number; fogDensity: number }) {
-  const mood = useMemo(() => moodAt(timeOfDay), [timeOfDay])
-
+export function Atmosphere({ mood, fogDensity }: { mood: Mood; fogDensity: number }) {
   return (
     <>
       <color attach="background" args={[mood.fog]} />
-      <fogExp2 attach="fog" args={[mood.fog.getHex(), fogDensity]} />
+      <fogExp2 attach="fog" args={[mood.fog.getHex(), fogDensity * mood.fogScale]} />
 
       <ambientLight color={mood.ambient} intensity={mood.ambientIntensity} />
       <hemisphereLight
@@ -20,11 +17,11 @@ export function Atmosphere({ timeOfDay, fogDensity }: { timeOfDay: number; fogDe
         groundColor={mood.groundColor}
         intensity={mood.hemiIntensity}
       />
-      {/* Lav sol i vest. Slukner før det blir helt mørkt. */}
+      {/* Høy sol midt på dagen, lav i vest mot kvelden. Slukner før mørket. */}
       <directionalLight
         color={mood.sunColor}
         intensity={mood.sunIntensity}
-        position={[-140, 40, -90]}
+        position={mood.sunPosition}
       />
     </>
   )

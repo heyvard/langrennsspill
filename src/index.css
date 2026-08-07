@@ -1,6 +1,6 @@
 :root {
   --hud-fg: #cfe0f5;
-  --hud-dim: #7e93ad;
+  --hud-dim: #5f7288;
 }
 
 * {
@@ -16,7 +16,8 @@ body {
   overscroll-behavior: none;
   /* Ingen scroll, ingen pinch-zoom, ingen dobbelttrykk-zoom. */
   touch-action: none;
-  background: #070b14;
+  /* Dagens tåkefarge — det er denne du ser før canvas har malt første bilde. */
+  background: #cfe0f2;
   color: var(--hud-fg);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   -webkit-user-select: none;
@@ -58,7 +59,8 @@ canvas {
   margin: -66px 0 0 -66px;
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(circle, rgba(190, 216, 255, 0.32), rgba(190, 216, 255, 0) 68%);
+  /* Nøytral nok til å leses både mot solbelyst snø og mørk skog. */
+  background: radial-gradient(circle, rgba(120, 150, 190, 0.32), rgba(120, 150, 190, 0) 68%);
   animation: glow-fade 320ms ease-out forwards;
 }
 
@@ -83,7 +85,8 @@ canvas {
   font-size: 12px;
   line-height: 1.5;
   letter-spacing: 0.02em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  /* Må bære lys tekst mot solbelyst snø, ikke bare mot mørk skog. */
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
 .hud-row {
