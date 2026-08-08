@@ -13,9 +13,12 @@ export const GROOVE = new Color('#94a6c0')
 export const LANE = new Color('#c7d2e2')
 /** Granskogen. Mørk barskoggrønn — leser grønt i sol, nesten svart i tåka. */
 export const SPRUCE = new Color('#2e4a34')
-/** Løperen. Grå kapsel, ikke noe mer. Lys nok til å lese mot snøen
- *  etter at ACES-tonemappingen har trykket midttonene ned. */
+/** Løperen. Lys grå, lys nok til å lese mot snøen etter at
+ *  ACES-tonemappingen har trykket midttonene ned. */
 export const RUNNER = new Color('#c3c8d0')
+/** Ski og staver. Mørk kontrast — tynne former trenger den for å lese på
+ *  avstand mot snøen. */
+export const GEAR = new Color('#2c2f36')
 
 export type Mood = {
   fog: Color
