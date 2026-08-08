@@ -9,6 +9,8 @@ import { Color } from 'three'
 export const SNOW = new Color('#dde5f0')
 /** Sporet i snøen — samme snø, litt dypere og kaldere. */
 export const GROOVE = new Color('#94a6c0')
+/** Skøytesporet — kjørt og pakket, men ikke presset så dypt/mørkt som skisporet. */
+export const LANE = new Color('#c7d2e2')
 /** Granskogen. Mørk barskoggrønn — leser grønt i sol, nesten svart i tåka. */
 export const SPRUCE = new Color('#2e4a34')
 /** Løperen. Grå kapsel, ikke noe mer. Lys nok til å lese mot snøen
