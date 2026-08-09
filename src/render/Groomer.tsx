@@ -1,33 +1,56 @@
 /**
- * Løypemaskinen. En grå boks i riktig størrelse, ikke noe mer.
- *
- * Karosseriet henger under en tom node som heter «vehicleRoot». Den er hele
- * poenget med filen: en GLB kan settes inn der senere uten at posisjonering,
- * lys eller noe annet må røres.
+ * Løypemaskinen. Karosseriet er en optimalisert GLB (public/models/groomer.glb,
+ * se glTF-transform-pipelinen som produserte den) som lastes inn i en tom
+ * node som heter «vehicleRoot». Den er hele poenget med gruppa: posisjonering,
+ * lys og orientering under er uavhengig av hva som ligger i vehicleRoot.
  */
 
+import { Suspense, useLayoutEffect, useMemo, useRef } from 'react'
+import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { useLayoutEffect, useRef } from 'react'
-import { Matrix4, Vector3, type Group, type Object3D, type SpotLight } from 'three'
+import { Box3, Matrix4, Vector3, type Group, type Object3D, type SpotLight } from 'three'
 import { createPose, samplePose, type SimStore } from '../engine/simStore'
 import type { World } from '../sim/world/types'
-import { GEAR } from './palette'
 
-/** Målene på en ekte tråkkemaskin, i meter. */
-const BODY_WIDTH = 3
-const BODY_HEIGHT = 2.5
-const BODY_LENGTH = 6
-/** Beltene stikker litt ut til side og løfter kroppen. */
-const TRACK_WIDTH = 0.6
-const TRACK_HEIGHT = 0.7
+// BASE_URL varierer mellom lokal dev ('/') og GitHub Pages-bygget
+// ('/langrennsspill/', se vite.config.ts) — må brukes, ikke hardkodes.
+const MODEL_PATH = `${import.meta.env.BASE_URL}models/groomer.glb`
+useGLTF.preload(MODEL_PATH, false)
+
+/** Modellrommets akser er kalibrert visuelt mot kjøreretning og bakkenivå. */
+const MODEL_YAW = -Math.PI / 2
+const MODEL_SCALE = 3.8
 
 /** Lyskasterne sitter på taket, ett par framover. */
-const LAMP_Y = BODY_HEIGHT + TRACK_HEIGHT * 0.5
-const LAMP_X = BODY_WIDTH * 0.32
+const LAMP_Y = 2.7
+const LAMP_X = 1.5
 const AIM = new Vector3(0, -2, -26)
 
 const UP = new Vector3(0, 1, 0)
-const BODY_COLOUR = '#6c727d'
+
+function GroomerModel() {
+  const { scene } = useGLTF(MODEL_PATH, false)
+
+  // Regnes ut fra scene-objektet før det henger under det poserte kjøretøyet
+  // — ellers ville boksen blitt målt i verdensrom, forurenset av gruppas
+  // faktiske kjøreposisjon, og korreksjonen ville skjøvet modellen langt av gårde.
+  const offset = useMemo(() => {
+    const box = new Box3().setFromObject(scene)
+    const center = box.getCenter(new Vector3())
+    if (import.meta.env.DEV) {
+      console.debug('[Groomer] reell størrelse (m):', box.getSize(new Vector3()))
+    }
+    // Samme konvensjon som resten av gruppa: origo ved bakkenivå, ikke ved
+    // geometrisk senter. Senter i XZ, løft slik at bunnen treffer lokal y=0.
+    return [-center.x, -box.min.y, -center.z] as const
+  }, [scene])
+
+  return (
+    <group rotation={[0, MODEL_YAW, 0]} scale={MODEL_SCALE}>
+      <primitive object={scene} position={offset} />
+    </group>
+  )
+}
 
 export function Groomer({
   store,
@@ -73,25 +96,15 @@ export function Groomer({
   return (
     <group ref={group}>
       <group name="vehicleRoot">
-        <mesh position={[0, TRACK_HEIGHT + BODY_HEIGHT / 2, 0]}>
-          <boxGeometry args={[BODY_WIDTH, BODY_HEIGHT, BODY_LENGTH]} />
-          <meshStandardMaterial color={BODY_COLOUR} flatShading roughness={0.75} metalness={0.15} />
-        </mesh>
-        {[-1, 1].map((sign) => (
-          <mesh
-            key={sign}
-            position={[sign * (BODY_WIDTH / 2 + TRACK_WIDTH / 2 - 0.1), TRACK_HEIGHT / 2, 0]}
-          >
-            <boxGeometry args={[TRACK_WIDTH, TRACK_HEIGHT, BODY_LENGTH * 0.95]} />
-            <meshStandardMaterial color={GEAR} flatShading roughness={0.9} metalness={0} />
-          </mesh>
-        ))}
+        <Suspense fallback={null}>
+          <GroomerModel />
+        </Suspense>
       </group>
 
       <object3D ref={aim} position={AIM} />
       <spotLight
         ref={left}
-        position={[-LAMP_X, LAMP_Y, -BODY_LENGTH / 2]}
+        position={[-LAMP_X, LAMP_Y, -3]}
         intensity={intensity}
         angle={0.7}
         penumbra={0.5}
@@ -101,7 +114,7 @@ export function Groomer({
       />
       <spotLight
         ref={right}
-        position={[LAMP_X, LAMP_Y, -BODY_LENGTH / 2]}
+        position={[LAMP_X, LAMP_Y, -3]}
         intensity={intensity}
         angle={0.7}
         penumbra={0.5}

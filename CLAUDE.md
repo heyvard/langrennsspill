@@ -77,6 +77,30 @@ Forskjellen på preparert og upreparert kommer mest fra `GRIP_UNGROOMED`, ikke
 fra friksjonen: µ drukner i luftmotstand ved marsjfart, mens et fraspark som
 glipper merkes overalt. Med innkjørte verdier gir det ~31 mot ~19 km/t.
 
+## GLB-modeller
+
+- Meshy AI-eksport er rå og altfor tung til sanntid: 4096²-teksturer og et
+  sammenhengende, ikke-retopologisert mesh på hundretusenvis av trekanter.
+  Kjør alltid gjennom `gltf-transform` (`weld` → `simplify` med
+  `MeshoptSimplifier` → `textureCompress` per teksturslot → `meshopt`-
+  komprimering) som et engangsskritt før filen havner i `public/models/` —
+  aldri som permanent avhengighet i `package.json`, bare `npx`/en scratch-mappe.
+- Bruk meshopt, ikke Draco, for geometrikomprimering. Draco-dekoderen i
+  `useGLTF` hentes fra en ekstern CDN (`gstatic.com`) med mindre man peker den
+  et annet sted; meshopt-dekoderen er allerede bundlet i `three-stdlib`/`drei`
+  og krever ingen nettverkstilgang.
+- Meshy setter `emissiveFactor=[1,1,1]`, som gjør modellen uønsket selvlysende.
+  Nullstill den i optimaliseringsskriptet, ikke i runtime-koden.
+- Bounding box-sentrering **må** regnes ut fra det rå GLTF-scene-objektet
+  (`useMemo` nøkla på `scene`) før det henger under en gruppe som allerede
+  poseres av simuleringen. `Box3.setFromObject` leser verdensrom-transformer;
+  kjøres utregningen etter at objektet er hengt under en gruppe med en ekte
+  posisjon (typisk fordi Suspense løser seint, etter at posen alt har rukket
+  å bli satt), blir offset forurenset av den posisjonen og modellen kastes
+  langt utenfor synsfeltet. Se `render/Groomer.tsx`.
+- Asset-stier bygges med `import.meta.env.BASE_URL`, aldri hardkodet `/` —
+  GitHub Pages-bygget serveres fra `/langrennsspill/`, lokal dev fra `/`.
+
 ## Kommandoer
 
     pnpm dev     pnpm test     pnpm world:check     pnpm build     pnpm lint
@@ -89,5 +113,6 @@ men om verdenene den lager er verdt å gå tur i.
 
 ## Utenfor scope nå
 
-Karaktermodell, animasjon, lyd, meny, lagring, ferdige 3D-modeller,
-postprocessing.
+Karaktermodell, animasjon, lyd, meny, lagring, postprocessing. Unntaket er
+løypemaskinens karosseri: én optimalisert GLB (`public/models/groomer.glb`,
+se `render/Groomer.tsx`) — resten av spillverdenen er fortsatt prosedyral.
