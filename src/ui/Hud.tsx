@@ -77,7 +77,9 @@ export function Hud({
         }
         if (friction.current) {
           const mu = muAt(world, placement, simNow, p)
-          const fresh = freshnessAt(edge, placement.s, simNow, p)
+          // Skiløperen leser midtbanen (lat 0); løypemaskinen sin egen posisjon.
+          const lat = state.mode === 'groomer' ? state.groomer.lat : 0
+          const fresh = freshnessAt(edge, placement.s, lat, simNow, p)
           friction.current.textContent = `${mu.toFixed(3)} (${Math.round(fresh * 100)} %)`
         }
         if (where.current) {

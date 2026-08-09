@@ -18,8 +18,14 @@ export type InputEvent =
   | { kind: 'swipe'; t: number; side: Side }
   | { kind: 'mode'; t: number }
 
-/** Hvilke soner som holdes inne akkurat nå. */
-export type Holds = { L: boolean; R: boolean }
+/**
+ * Hvilke soner som holdes inne akkurat nå. `L`/`R` er rattet i løypemaskinen,
+ * `U`/`D` er gass og revers. Skiløperen leser ingen av dem — hun går på tapp.
+ */
+export type Holds = { L: boolean; R: boolean; U: boolean; D: boolean }
+
+/** Retningene et hold kan ha. Flere enn `Side`, som bare er venstre og høyre. */
+export type HoldKey = keyof Holds
 
 type Listener = (hit: TapHit) => void
 
@@ -31,7 +37,7 @@ export type InputSource = {
   pushTap(hit: TapHit): void
   pushSwipe(side: Side, hit: TapHit): void
   pushMode(): void
-  setHold(side: Side, down: boolean): void
+  setHold(key: HoldKey, down: boolean): void
   /** Varsles ved hvert tapp, så overlayet kan tegne en glød. */
   subscribe(fn: Listener): () => void
 }
@@ -43,7 +49,7 @@ export function now(): number {
 
 export function useInput(): InputSource {
   const queue = useRef<InputEvent[]>([])
-  const held = useRef<Holds>({ L: false, R: false })
+  const held = useRef<Holds>({ L: false, R: false, U: false, D: false })
   const listeners = useRef(new Set<Listener>())
 
   const source = useMemo<InputSource>(
@@ -68,8 +74,8 @@ export function useInput(): InputSource {
       pushMode() {
         queue.current.push({ kind: 'mode', t: now() })
       },
-      setHold(side, down) {
-        held.current[side] = down
+      setHold(key, down) {
+        held.current[key] = down
       },
       subscribe(fn) {
         listeners.current.add(fn)
@@ -89,8 +95,15 @@ export function useInput(): InputSource {
       }
     }
 
+    // Venstre/høyre pil er tapp for skiløperen og ratt for løypemaskinen —
+    // samme hold, ulik betydning avhengig av hvem som styrer. Opp/ned pil og
+    // W/S er gass og revers, bare løypemaskinen bryr seg.
     function sideOfArrow(key: string): Side | null {
       return key === 'ArrowLeft' ? 'L' : key === 'ArrowRight' ? 'R' : null
+    }
+
+    function verticalOfArrow(key: string): 'U' | 'D' | null {
+      return key === 'ArrowUp' ? 'U' : key === 'ArrowDown' ? 'D' : null
     }
 
     function onKeyDown(e: KeyboardEvent) {
@@ -102,12 +115,23 @@ export function useInput(): InputSource {
         if (!e.repeat) source.pushTap(hitFor(arrow))
         return
       }
+      const vertical = verticalOfArrow(e.key)
+      if (vertical) {
+        e.preventDefault()
+        source.setHold(vertical, true)
+        return
+      }
       if (e.repeat) return
       const lower = e.key.toLowerCase()
       if (lower === 'a' || lower === 'd') {
         e.preventDefault()
         const side: Side = lower === 'a' ? 'L' : 'R'
         source.pushSwipe(side, hitFor(side))
+        return
+      }
+      if (lower === 'w' || lower === 's') {
+        e.preventDefault()
+        source.setHold(lower === 'w' ? 'U' : 'D', true)
         return
       }
       if (lower === 'm') {
@@ -118,13 +142,25 @@ export function useInput(): InputSource {
 
     function onKeyUp(e: KeyboardEvent) {
       const arrow = sideOfArrow(e.key)
-      if (arrow) source.setHold(arrow, false)
+      if (arrow) {
+        source.setHold(arrow, false)
+        return
+      }
+      const vertical = verticalOfArrow(e.key)
+      if (vertical) {
+        source.setHold(vertical, false)
+        return
+      }
+      const lower = e.key.toLowerCase()
+      if (lower === 'w' || lower === 's') source.setHold(lower === 'w' ? 'U' : 'D', false)
     }
 
     /** Slipper man tasten mens fanen er borte, kommer keyup aldri. */
     function onBlur() {
       source.setHold('L', false)
       source.setHold('R', false)
+      source.setHold('U', false)
+      source.setHold('D', false)
     }
 
     window.addEventListener('keydown', onKeyDown)

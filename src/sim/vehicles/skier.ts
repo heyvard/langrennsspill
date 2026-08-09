@@ -29,7 +29,8 @@ export function stepSkier(
 ): SkierState {
   const edge = edgeOf(world, state.placement.edge)
   const theta = Math.atan(edgeGradient(edge, state.placement.s, state.placement.dir))
-  const freshness = freshnessAt(edge, state.placement.s, now, p)
+  // Skiløperen ligger i sporet på midtlinja — hun har ingen sideveis posisjon.
+  const freshness = freshnessAt(edge, state.placement.s, 0, now, p)
   const mu = p.MU_UNGROOMED + (p.MU_GROOMED - p.MU_UNGROOMED) * freshness
   const grip = gripFrom(freshness, p)
 

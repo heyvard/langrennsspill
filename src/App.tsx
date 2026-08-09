@@ -30,7 +30,7 @@ export default function App() {
   const bundle = useMemo(() => {
     const world = generate(view.seed, paramsRef.current)
     const height = createHeightField(view.seed, paramsRef.current)
-    const trails = buildTrailField(world)
+    const trails = buildTrailField(world, paramsRef.current)
     return {
       world,
       height,
@@ -68,7 +68,7 @@ export default function App() {
         />
       </Canvas>
 
-      <TouchZones source={source} swipeThreshold={params.SWIPE_THRESHOLD_PX} />
+      <TouchZones source={source} swipeThreshold={params.SWIPE_THRESHOLD_PX} store={store} />
       <Hud store={store} world={bundle.world} paramsRef={paramsRef} visible={view.showHud} />
       <Minimap
         store={store}

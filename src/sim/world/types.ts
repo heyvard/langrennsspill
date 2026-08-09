@@ -39,10 +39,15 @@ export interface WorldEdge {
   difficulty: Difficulty
   /** Brattest |dy/ds| langs kanten. difficulty utledes av denne. */
   maxGradient: number
+  /** Antall bøtter langs kanten, én per GROOM_BUCKET_LENGTH meter. */
+  buckets: number
   /**
-   * Sim-tiden hver bøtte sist ble preparert, én bøtte per
-   * GROOM_BUCKET_LENGTH meter. Negativ verdi betyr aldri preparert —
-   * NaN skal aldri finnes i sim.
+   * Sim-tiden hver celle sist ble preparert. Rutenettet er todimensjonalt og
+   * lagret flatt: `lane * buckets + bucket`, med GROOM_LANE_COUNT baner på
+   * tvers og én bøtte per GROOM_BUCKET_LENGTH meter langs. Bladet er smalere
+   * enn løypa, så en passering stempler bare sine egne baner.
+   *
+   * Negativ verdi betyr aldri preparert — NaN skal aldri finnes i sim.
    */
   groomedAt: Float64Array
 }

@@ -27,7 +27,12 @@ export function initialState(world: World): State {
     mode: 'skier',
     skier: { placement: start, v: 0, cadence: initialCadence() },
     // Litt bak, så den ikke står oppi løperen i det bildet kommer opp.
-    groomer: { placement: advance(start, -GROOMER_OFFSET, world, straightest), v: 0 },
+    groomer: {
+      placement: advance(start, -GROOMER_OFFSET, world, straightest),
+      v: 0,
+      lat: 0,
+      yaw: 0,
+    },
     pendingTurn: null,
   }
 }
@@ -93,7 +98,7 @@ export function step(
     const { due } = partitionTaps(input.taps, tEnd)
     skier = stepSkier(skier, due, state.t, dt, world, p, chooser)
   } else {
-    groomer = stepGroomer(groomer, input.throttle, state.t, dt, world, p, chooser)
+    groomer = stepGroomer(groomer, input.throttle, input.steer, state.t, dt, world, p, chooser)
   }
 
   // Passerte vi en node, er valget brukt opp — også når vi snudde i en blindvei.

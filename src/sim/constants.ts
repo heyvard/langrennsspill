@@ -66,10 +66,22 @@ export type Params = {
   TERRAIN_AMPLITUDE: number
   /** Grunnfrekvens i terrengstøyen, 1/meter. Høyt gir kortere bakker. */
   TERRAIN_FREQUENCY: number
+  /**
+   * Halv løypebredde, meter. Løypa er symmetrisk om midtlinja, og skisporene
+   * ligger i midten — skiløperen renderes fra midtlinja og har ingen
+   * sideveis posisjon.
+   */
+  TRAIL_HALF_WIDTH: number
 
   // --- Preparering ---
   /** Lengden på én prepareringsbøtte, meter. Oppløsningen på halvpreparerte kanter. */
   GROOM_BUCKET_LENGTH: number
+  /**
+   * Antall baner på tvers av løypa. Oppløsningen på halvpreparerte bredder.
+   * Tvinges opp til nærmeste oddetall, så det finnes en midtbane som dekker
+   * skisporene — ellers kunne ett spor blitt preparert og det andre ikke.
+   */
+  GROOM_LANE_COUNT: number
   /** Friksjon i ferskt preparert spor. */
   MU_GROOMED: number
   /** Friksjon i upreparert snø. */
@@ -93,6 +105,12 @@ export type Params = {
   GROOMER_BRAKE: number
   /** Reversfart som andel av toppfarten. */
   GROOMER_REVERSE_FACTOR: number
+  /** Bredden bladet preparerer, meter. Setter hvor mange pass en løype tar. */
+  GROOMER_BLADE_WIDTH: number
+  /** Største kursavvik fra løypas tangent, radianer. Fullt rattutslag. */
+  GROOMER_MAX_YAW: number
+  /** Hvor fort rattet dreier mot ønsket utslag, radianer per sekund. */
+  GROOMER_STEER_RATE: number
 
   // --- Navigasjon ---
   /** Hvor nær krysset man må være for at et sveip skal telle, meter. */
@@ -149,8 +167,13 @@ export const DEFAULTS: Params = {
   // den planere dem bort i stedet — flatere løyper i kupert terreng.
   TERRAIN_AMPLITUDE: 5.5,
   TERRAIN_FREQUENCY: 0.0045,
+  // Seks meter bred: nøyaktig to bladbredder, så løypa krever to pass og
+  // maskinen har en meter og en halv å styre på til hver side.
+  TRAIL_HALF_WIDTH: 3,
 
   GROOM_BUCKET_LENGTH: 10,
+  // Oddetall, så midtbanen dekker skisporene. Sju baner à ~0.86 m.
+  GROOM_LANE_COUNT: 7,
   MU_GROOMED: 0.02,
   MU_UNGROOMED: 0.075,
   GROOM_DECAY_TIME: 600,
@@ -160,6 +183,11 @@ export const DEFAULTS: Params = {
   GROOMER_POWER: 4,
   GROOMER_BRAKE: 6,
   GROOMER_REVERSE_FACTOR: 0.5,
+  GROOMER_BLADE_WIDTH: 3,
+  // En halv radian er ~29°. Nok til å krysse løypa på et titalls meter uten
+  // at maskinen ser ut til å kjøre sidelengs.
+  GROOMER_MAX_YAW: 0.5,
+  GROOMER_STEER_RATE: 1.6,
 
   JUNCTION_PREVIEW_DISTANCE: 60,
   SWIPE_THRESHOLD_PX: 40,
@@ -198,8 +226,10 @@ export const RANGES: Record<keyof Params, Range> = {
   DIFFICULTY_HARD_GRADIENT: { min: 0.02, max: 0.5, step: 0.005 },
   TERRAIN_AMPLITUDE: { min: 0, max: 40, step: 0.1 },
   TERRAIN_FREQUENCY: { min: 0.0005, max: 0.02, step: 0.0001 },
+  TRAIL_HALF_WIDTH: { min: 1.5, max: 6, step: 0.1 },
 
   GROOM_BUCKET_LENGTH: { min: 2, max: 50, step: 1 },
+  GROOM_LANE_COUNT: { min: 1, max: 15, step: 2 },
   MU_GROOMED: { min: 0, max: 0.2, step: 0.001 },
   MU_UNGROOMED: { min: 0, max: 0.3, step: 0.001 },
   GROOM_DECAY_TIME: { min: 10, max: 3600, step: 10 },
@@ -209,6 +239,9 @@ export const RANGES: Record<keyof Params, Range> = {
   GROOMER_POWER: { min: 0.5, max: 20, step: 0.1 },
   GROOMER_BRAKE: { min: 0.5, max: 30, step: 0.1 },
   GROOMER_REVERSE_FACTOR: { min: 0.1, max: 1, step: 0.05 },
+  GROOMER_BLADE_WIDTH: { min: 1, max: 6, step: 0.1 },
+  GROOMER_MAX_YAW: { min: 0.05, max: 1.2, step: 0.01 },
+  GROOMER_STEER_RATE: { min: 0.2, max: 8, step: 0.1 },
 
   JUNCTION_PREVIEW_DISTANCE: { min: 10, max: 300, step: 5 },
   SWIPE_THRESHOLD_PX: { min: 10, max: 200, step: 1 },
@@ -249,12 +282,14 @@ export const PARAM_GROUPS: { label: string; keys: (keyof Params)[] }[] = [
       'DIFFICULTY_HARD_GRADIENT',
       'TERRAIN_AMPLITUDE',
       'TERRAIN_FREQUENCY',
+      'TRAIL_HALF_WIDTH',
     ],
   },
   {
     label: 'Preparering',
     keys: [
       'GROOM_BUCKET_LENGTH',
+      'GROOM_LANE_COUNT',
       'MU_GROOMED',
       'MU_UNGROOMED',
       'GROOM_DECAY_TIME',
@@ -263,7 +298,15 @@ export const PARAM_GROUPS: { label: string; keys: (keyof Params)[] }[] = [
   },
   {
     label: 'Løypemaskin',
-    keys: ['GROOMER_MAX_SPEED', 'GROOMER_POWER', 'GROOMER_BRAKE', 'GROOMER_REVERSE_FACTOR'],
+    keys: [
+      'GROOMER_MAX_SPEED',
+      'GROOMER_POWER',
+      'GROOMER_BRAKE',
+      'GROOMER_REVERSE_FACTOR',
+      'GROOMER_BLADE_WIDTH',
+      'GROOMER_MAX_YAW',
+      'GROOMER_STEER_RATE',
+    ],
   },
   {
     label: 'Navigasjon',
@@ -294,7 +337,10 @@ export const WORLD_PARAM_KEYS = [
   'DIFFICULTY_HARD_GRADIENT',
   'TERRAIN_AMPLITUDE',
   'TERRAIN_FREQUENCY',
+  'TRAIL_HALF_WIDTH',
+  // Bøttene og banene er selve rutenettet groomedAt allokeres i.
   'GROOM_BUCKET_LENGTH',
+  'GROOM_LANE_COUNT',
 ] as const satisfies readonly (keyof Params)[]
 
 /** Standard seed. Rendering og sim må alltid bruke samme. */

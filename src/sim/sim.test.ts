@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { targetInterval } from './cadence'
 import { DEFAULTS, DEFAULT_SEED, type Params } from './constants'
 import { activeSpeed, initialState, step } from './physics'
-import type { Side, State, StepInput, Tap } from './types'
-import { groomSpan } from './vehicles/grooming'
+import { straightest, type Placement } from './traversal'
+import type { GroomerState, Side, State, StepInput, Tap } from './types'
+import { lateralLimit, stepGroomer } from './vehicles/groomer'
+import { groomedShare, groomSpan } from './vehicles/grooming'
 import { generate } from './world/generate'
 import { clampS } from './world/geometry'
-import { edgeOf, type World } from './world/types'
+import { edgeOf, edgesAt, type World } from './world/types'
 
 /** Kalles én gang per steg og returnerer tappene som hører til steget. */
 type Tapper = (state: State, p: Params) => Tap[]
@@ -14,7 +16,7 @@ type Tapper = (state: State, p: Params) => Tap[]
 type Run = { averageSpeed: number; finalState: State; samples: State[] }
 
 function idle(taps: Tap[]): StepInput {
-  return { taps, throttle: 0, turn: null, modeToggles: 0 }
+  return { taps, throttle: 0, steer: 0, turn: null, modeToggles: 0 }
 }
 
 function simulate(seconds: number, tapper: Tapper, p: Params = DEFAULTS, world?: World): Run {
@@ -154,7 +156,7 @@ describe('preparering', () => {
     const world = generate(DEFAULT_SEED, DEFAULTS)
     if (groomedAt !== null) {
       for (const edge of world.edges.values()) {
-        groomSpan(world, edge.id, 0, edge.length, groomedAt, DEFAULTS)
+        groomSpan(world, edge.id, 0, edge.length, 0, groomedAt, DEFAULTS)
       }
     }
     return simulate(seconds, metronome(true), DEFAULTS, world).averageSpeed
@@ -184,7 +186,7 @@ describe('løypemaskinen', () => {
     state = { ...state, mode: 'groomer' }
 
     const startEdge = state.groomer.placement.edge
-    const input: StepInput = { taps: [], throttle: 1, turn: null, modeToggles: 0 }
+    const input: StepInput = { taps: [], throttle: 1, steer: 0, turn: null, modeToggles: 0 }
     for (let i = 0; i < Math.round(20 / p.FIXED_DT); i++) {
       state = step(state, input, p.FIXED_DT, world, p)
     }
@@ -203,7 +205,7 @@ describe('løypemaskinen', () => {
     const world = generate(DEFAULT_SEED, DEFAULTS)
     const p = DEFAULTS
     let state: State = { ...initialState(world), mode: 'groomer' }
-    const input: StepInput = { taps: [], throttle: -1, turn: null, modeToggles: 0 }
+    const input: StepInput = { taps: [], throttle: -1, steer: 0, turn: null, modeToggles: 0 }
 
     for (let i = 0; i < Math.round(15 / p.FIXED_DT); i++) {
       state = step(state, input, p.FIXED_DT, world, p)
@@ -221,9 +223,127 @@ describe('løypemaskinen', () => {
     let state = initialState(world)
     expect(state.mode).toBe('skier')
 
-    state = step(state, { taps: [], throttle: 1, turn: null, modeToggles: 1 }, p.FIXED_DT, world, p)
+    state = step(
+      state,
+      { taps: [], throttle: 1, steer: 0, turn: null, modeToggles: 1 },
+      p.FIXED_DT,
+      world,
+      p,
+    )
     expect(state.mode).toBe('groomer')
     expect(activeSpeed(state)).toBe(state.groomer.v)
+  })
+})
+
+describe('løypemaskinens styring', () => {
+  it('lat og yaw holder seg innenfor grensene under vilkårlig styring', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const limit = lateralLimit(p)
+    let state: State = { ...initialState(world), mode: 'groomer' }
+
+    let seed = 4242
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+
+    for (let i = 0; i < 20000; i++) {
+      const throttle = (Math.floor(rand() * 3) - 1) as -1 | 0 | 1
+      const steer = (Math.floor(rand() * 3) - 1) as -1 | 0 | 1
+      const input: StepInput = { taps: [], throttle, steer, turn: null, modeToggles: 0 }
+      state = step(state, input, p.FIXED_DT, world, p)
+
+      expect(Number.isFinite(state.groomer.lat)).toBe(true)
+      expect(Number.isFinite(state.groomer.yaw)).toBe(true)
+      expect(Math.abs(state.groomer.lat)).toBeLessThanOrEqual(limit + 1e-9)
+      expect(Math.abs(state.groomer.yaw)).toBeLessThanOrEqual(p.GROOMER_MAX_YAW + 1e-9)
+    }
+  })
+
+  it('styrer mot riktig side, og speilvendt i revers', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    // `dir` er valgt eksplisitt her: hvilken vei den tilfeldig genererte
+    // kanten peker er vilkårlig, og fysisk lat = q bare når dir === 1.
+    const longest = [...world.edges.values()].reduce((a, b) => (a.length > b.length ? a : b))
+    let state: GroomerState = {
+      placement: { edge: longest.id, s: longest.length / 2, dir: 1 },
+      v: 0,
+      lat: 0,
+      yaw: 0,
+    }
+
+    // Kjør opp i fart før vi styrer, ellers er det ingenting å style med.
+    for (let i = 0; i < Math.round(3 / p.FIXED_DT); i++) {
+      state = stepGroomer(state, 1, 0, 0, p.FIXED_DT, world, p, straightest)
+    }
+    expect(state.v).toBeGreaterThan(0)
+
+    let right = state
+    for (let i = 0; i < Math.round(1 / p.FIXED_DT); i++) {
+      right = stepGroomer(right, 1, 1, 0, p.FIXED_DT, world, p, straightest)
+    }
+    expect(right.lat).toBeGreaterThan(state.lat)
+
+    // Samme rattutslag i revers driver den andre veien.
+    let reversing: GroomerState = { ...state, v: -1 }
+    for (let i = 0; i < Math.round(1 / p.FIXED_DT); i++) {
+      reversing = stepGroomer(reversing, -1, 1, 0, p.FIXED_DT, world, p, straightest)
+    }
+    expect(reversing.lat).toBeLessThan(state.lat)
+  })
+
+  it('bevarer fysisk sideposisjon gjennom en blindveisnuing', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const deadEnd = [...world.nodes.keys()].find((id) => edgesAt(world, id).length === 1)
+    // Grafen er ikke garantert å ha blindveier, men denne seeden har dem.
+    expect(deadEnd).toBeDefined()
+
+    const edgeId = edgesAt(world, deadEnd!)[0]
+    const edge = edgeOf(world, edgeId)
+    const towards: Placement =
+      edge.to === deadEnd
+        ? { edge: edgeId, s: edge.length - 5, dir: 1 }
+        : { edge: edgeId, s: 5, dir: -1 }
+
+    let state: GroomerState = { placement: towards, v: p.GROOMER_MAX_SPEED, lat: 1.1, yaw: 0 }
+    let flipped = false
+    for (let i = 0; i < 200 && !flipped; i++) {
+      const dirBefore = state.placement.dir
+      state = stepGroomer(state, 1, 0, 0, p.FIXED_DT, world, p, straightest)
+      if (state.placement.dir !== dirBefore) flipped = true
+    }
+
+    expect(flipped).toBe(true)
+    // Maskinen snudde på stedet — den fysiske posisjonen er uendret, selv om
+    // den førerrelative siden byttet.
+    expect(state.lat).toBeCloseTo(1.1, 6)
+  })
+
+  it('ett midtpass dekker bare de midterste banene, ikke hele bredden', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const edge = [...world.edges.values()][0]
+
+    groomSpan(world, edge.id, 0, edge.length, 0, 0, p)
+    const share = groomedShare(world, edge.id, 0, p)
+
+    expect(share).toBeGreaterThan(0)
+    expect(share).toBeLessThan(1)
+  })
+
+  it('to pass i hver sin ytterstilling dekker hele bredden', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const edge = [...world.edges.values()][0]
+    const limit = lateralLimit(p)
+
+    groomSpan(world, edge.id, 0, edge.length, -limit, 0, p)
+    groomSpan(world, edge.id, 0, edge.length, limit, 0, p)
+
+    expect(groomedShare(world, edge.id, 0, p)).toBeCloseTo(1, 6)
   })
 })
 

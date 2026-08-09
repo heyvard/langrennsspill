@@ -8,29 +8,37 @@
 import type { Params } from '../constants'
 import { clamp } from '../rng'
 import type { Placement } from '../traversal'
-import { bucketIndex, freshnessAt } from '../world/geometry'
+import { bucketIndex, freshnessAt, laneIndex } from '../world/geometry'
 import { edgeOf, type EdgeId, type World } from '../world/types'
 
 /**
  * Glidefriksjonen der man står. Ferskt preparert spor er nesten dobbelt så
  * raskt som upreparert snø, og fordelen visner jevnt over GROOM_DECAY_TIME.
+ *
+ * Leses alltid i midtbanen: skiløperen ligger i sporet på midtlinja og har
+ * ingen sideveis posisjon. Preparerer maskinen bare ytterkantene, blir hun
+ * altså ikke raskere — hun må ha midtbanen.
  */
 export function muAt(world: World, placement: Placement, now: number, p: Params): number {
   const edge = edgeOf(world, placement.edge)
-  const freshness = freshnessAt(edge, placement.s, now, p)
+  const freshness = freshnessAt(edge, placement.s, 0, now, p)
   return p.MU_UNGROOMED + (p.MU_GROOMED - p.MU_UNGROOMED) * freshness
 }
 
 /**
- * Stempler strekningen mellom `from` og `to` som preparert nå. Rekkefølgen
- * på argumentene spiller ingen rolle — løypemaskinen preparerer like godt
- * i revers.
+ * Stempler strekningen mellom `from` og `to` som preparert nå, i det båndet
+ * bladet dekker rundt `lat`. Rekkefølgen på argumentene spiller ingen rolle —
+ * løypemaskinen preparerer like godt i revers.
+ *
+ * `lat` er meter mot høyre for `from → to`, altså i kantens eget rom, ikke
+ * førerens. Bladet er symmetrisk, så fortegnet trenger ingen omregning her.
  */
 export function groomSpan(
   world: World,
   edgeId: EdgeId,
   from: number,
   to: number,
+  lat: number,
   now: number,
   p: Params,
 ): void {
@@ -38,10 +46,24 @@ export function groomSpan(
   const edge = edgeOf(world, edgeId)
   const lo = bucketIndex(edge, Math.min(from, to), p)
   const hi = bucketIndex(edge, Math.max(from, to), p)
-  for (let i = lo; i <= hi; i++) edge.groomedAt[i] = now
+
+  const reach = Math.max(p.GROOMER_BLADE_WIDTH, 0) / 2
+  const centre = Number.isFinite(lat) ? lat : 0
+  const loLane = laneIndex(centre - reach, p)
+  const hiLane = laneIndex(centre + reach, p)
+
+  for (let lane = loLane; lane <= hiLane; lane++) {
+    const base = lane * edge.buckets
+    for (let i = lo; i <= hi; i++) edge.groomedAt[base + i] = now
+  }
 }
 
-/** Hvor stor andel av en kant som er preparert akkurat nå. Til minikartet. */
+/**
+ * Hvor stor andel av en kants flate som er preparert akkurat nå. Til
+ * minikartet. Midler over hele rutenettet, så én passering ned en seks meter
+ * bred løype med tre meter blad gir en halv — bredden teller like mye som
+ * lengden.
+ */
 export function groomedShare(world: World, edgeId: EdgeId, now: number, p: Params): number {
   const edge = edgeOf(world, edgeId)
   let sum = 0

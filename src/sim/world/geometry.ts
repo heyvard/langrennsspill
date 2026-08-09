@@ -163,22 +163,63 @@ export function bucketCount(length: number, p: Params): number {
 export function bucketIndex(edge: WorldEdge, s: number, p: Params): number {
   const size = Math.max(p.GROOM_BUCKET_LENGTH, 1e-3)
   const i = Math.floor(clampS(edge, s) / size)
-  return clamp(i, 0, edge.groomedAt.length - 1)
+  return clamp(i, 0, edge.buckets - 1)
+}
+
+/**
+ * Antall baner på tvers. Alltid et oddetall, så midtbanen dekker lat = 0 og
+ * dermed begge skisporene — ellers ville et spor kunne bli preparert og det
+ * andre ikke, av samme passering.
+ */
+export function laneCount(p: Params): number {
+  const n = Math.max(1, Math.round(p.GROOM_LANE_COUNT))
+  return n % 2 === 0 ? n + 1 : n
+}
+
+/** Halv løypebredde, aldri negativ. */
+export function halfWidth(p: Params): number {
+  return Math.max(p.TRAIL_HALF_WIDTH, 1e-3)
+}
+
+/** Bredden på én bane, meter. */
+export function laneWidth(p: Params): number {
+  return (2 * halfWidth(p)) / laneCount(p)
+}
+
+/**
+ * Banen som dekker en sideveis posisjon, målt i meter mot høyre for
+ * `from → to`. Alltid en gyldig indeks.
+ */
+export function laneIndex(lat: number, p: Params): number {
+  const half = halfWidth(p)
+  const t = clamp(Number.isFinite(lat) ? lat : 0, -half, half)
+  return clamp(Math.floor((t + half) / laneWidth(p)), 0, laneCount(p) - 1)
+}
+
+/** Cella i `groomedAt` som dekker et punkt. Rutenettet er lagret flatt. */
+export function cellIndex(edge: WorldEdge, s: number, lat: number, p: Params): number {
+  return laneIndex(lat, p) * edge.buckets + bucketIndex(edge, s, p)
 }
 
 /** Hvor ferskt preparert et punkt er, 1 = nettopp, 0 = upreparert eller glemt. */
-export function freshnessAt(edge: WorldEdge, s: number, now: number, p: Params): number {
-  return freshnessOfBucket(edge, bucketIndex(edge, s, p), now, p)
-}
-
-export function freshnessOfBucket(
+export function freshnessAt(
   edge: WorldEdge,
-  bucket: number,
+  s: number,
+  lat: number,
   now: number,
   p: Params,
 ): number {
-  const groomed = edge.groomedAt[bucket]
-  if (groomed <= NEVER_GROOMED) return 0
+  return freshnessOfCell(edge, cellIndex(edge, s, lat, p), now, p)
+}
+
+export function freshnessOfCell(
+  edge: WorldEdge,
+  cell: number,
+  now: number,
+  p: Params,
+): number {
+  const groomed = edge.groomedAt[cell]
+  if (groomed === undefined || groomed <= NEVER_GROOMED) return 0
   const decay = Math.max(p.GROOM_DECAY_TIME, 1e-6)
   return clamp(1 - (now - groomed) / decay, 0, 1)
 }

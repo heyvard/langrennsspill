@@ -7,9 +7,9 @@
 
 import { initialState } from '../sim/physics'
 import { clamp } from '../sim/rng'
-import type { Mode, State } from '../sim/types'
-import { edgePoint, edgeTangent } from '../sim/world/geometry'
-import { edgeOf, type World } from '../sim/world/types'
+import type { GroomerState, Mode, SkierState, State, Vec3 } from '../sim/types'
+import { edgeLateral, edgePoint, edgeTangent } from '../sim/world/geometry'
+import { edgeOf, type WorldEdge, type World } from '../sim/world/types'
 
 export type SimStore = {
   /** Tilstanden før siste faste steg. */
@@ -46,6 +46,40 @@ export function createPose(): Pose {
   return { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 1, v: 0 }
 }
 
+/** Skiløperen har ingen sideveis posisjon — hun ligger i sporet på midtlinja. */
+function lateralOf(state: SkierState | GroomerState): number {
+  return 'lat' in state ? state.lat : 0
+}
+
+function yawOf(state: SkierState | GroomerState): number {
+  return 'yaw' in state ? state.yaw : 0
+}
+
+/**
+ * Punktet på midtlinja forskjøvet sideveis. `lat` er lagret i kantens eget
+ * rom — meter mot høyre for `from → to` — så oppslaget bruker alltid
+ * `edgeLateral(edge, s, 1)`, uansett hvilken vei kjøretøyet faktisk kjører.
+ */
+function lateralPoint(edge: WorldEdge, s: number, lat: number): Vec3 {
+  const p = edgePoint(edge, s)
+  if (lat === 0) return p
+  const lateral = edgeLateral(edge, s, 1)
+  return { x: p.x + lateral.x * lat, y: p.y, z: p.z + lateral.z * lat }
+}
+
+/**
+ * Tangenten dreid med kursavviket. `edgeLateral(edge, s, dir)` er «til høyre
+ * for føreren» i faktisk kjøreretning, ulikt `lateralPoint` over.
+ */
+function yawedTangent(edge: WorldEdge, s: number, dir: 1 | -1, yaw: number): Vec3 {
+  const t = edgeTangent(edge, s, dir)
+  if (yaw === 0) return t
+  const lateral = edgeLateral(edge, s, dir)
+  const cos = Math.cos(yaw)
+  const sin = Math.sin(yaw)
+  return { x: t.x * cos + lateral.x * sin, y: t.y * cos, z: t.z * cos + lateral.z * sin }
+}
+
 /**
  * Interpolert posisjon for ett kjøretøy. Posisjonen lerpes i xyz — de to
  * punktene ligger noen centimeter fra hverandre, så det er trygt selv når
@@ -60,20 +94,23 @@ export function samplePose(store: SimStore, world: World, mode: Mode, out: Pose)
   const b = mode === 'skier' ? store.curr.skier : store.curr.groomer
   const alpha = clamp(store.alpha, 0, 1)
 
-  const pa = edgePoint(edgeOf(world, a.placement.edge), a.placement.s)
-  const pb = edgePoint(edgeOf(world, b.placement.edge), b.placement.s)
+  const edgeA = edgeOf(world, a.placement.edge)
+  const edgeB = edgeOf(world, b.placement.edge)
+
+  const pa = lateralPoint(edgeA, a.placement.s, lateralOf(a))
+  const pb = lateralPoint(edgeB, b.placement.s, lateralOf(b))
   out.x = pa.x + (pb.x - pa.x) * alpha
   out.y = pa.y + (pb.y - pa.y) * alpha
   out.z = pa.z + (pb.z - pa.z) * alpha
 
-  const tb = edgeTangent(edgeOf(world, b.placement.edge), b.placement.s, b.placement.dir)
+  const tb = yawedTangent(edgeB, b.placement.s, b.placement.dir, yawOf(b))
   const switched = a.placement.edge !== b.placement.edge || a.placement.dir !== b.placement.dir
   if (switched) {
     out.tx = tb.x
     out.ty = tb.y
     out.tz = tb.z
   } else {
-    const ta = edgeTangent(edgeOf(world, a.placement.edge), a.placement.s, a.placement.dir)
+    const ta = yawedTangent(edgeA, a.placement.s, a.placement.dir, yawOf(a))
     const tx = ta.x + (tb.x - ta.x) * alpha
     const ty = ta.y + (tb.y - ta.y) * alpha
     const tz = ta.z + (tb.z - ta.z) * alpha

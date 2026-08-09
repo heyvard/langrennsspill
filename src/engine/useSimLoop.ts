@@ -22,10 +22,16 @@ const MAX_FRAME_DT = 0.25
 /** Tak på faste steg per bilde. Uten dette kan loopen spiralere. */
 const MAX_STEPS_PER_FRAME = 10
 
-/** Én side inne er gass, begge er revers, ingen er tomgang. */
-function throttleFrom(holds: { L: boolean; R: boolean }): -1 | 0 | 1 {
-  if (holds.L && holds.R) return -1
-  return holds.L || holds.R ? 1 : 0
+/** Opp er gass, ned er revers, begge eller ingen er tomgang. */
+function throttleFrom(holds: { U: boolean; D: boolean }): -1 | 0 | 1 {
+  if (holds.U === holds.D) return 0
+  return holds.U ? 1 : -1
+}
+
+/** Rattet: venstre eller høyre, begge er rett fram. */
+function steerFrom(holds: { L: boolean; R: boolean }): -1 | 0 | 1 {
+  if (holds.L === holds.R) return 0
+  return holds.R ? 1 : -1
 }
 
 export function useSimLoop(
@@ -60,7 +66,9 @@ export function useSimLoop(
       pending.current.push({ ...event, t: event.t - simOrigin.current })
     }
 
-    const throttle = throttleFrom(source.holds())
+    const holds = source.holds()
+    const throttle = throttleFrom(holds)
+    const steer = steerFrom(holds)
     const dt = p.FIXED_DT
     let steps = 0
 
@@ -85,7 +93,7 @@ export function useSimLoop(
       pending.current = rest
       taps.sort((a, b) => a.t - b.t)
 
-      const input: StepInput = { taps, throttle, turn, modeToggles }
+      const input: StepInput = { taps, throttle, steer, turn, modeToggles }
       store.prev = store.curr
       store.curr = step(store.curr, input, dt, world, p)
       accumulator.current -= dt

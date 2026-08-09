@@ -12,21 +12,23 @@
  * innenfor sin egen korridor.
  */
 
+import type { Params } from '../sim/constants'
 import { edgePoint } from '../sim/world/geometry'
 import type { World } from '../sim/world/types'
 
 /** Avstand mellom punktene løypa registreres med, meter. */
 const SAMPLE_SPACING = 4
 /**
- * Så langt fra løypa oppslaget svarer. Utenfor er terrenget urørt.
- * Holdt stramt: gjør den bred, blir skjæringen en motorvei gjennom skogen.
+ * Hvor mye lenger enn halve løypebredden oppslaget svarer. Utenfor er
+ * terrenget urørt. Holdt stramt: gjør skulderen bred, blir skjæringen en
+ * motorvei gjennom skogen.
  */
-export const REACH = 9
+const SHOULDER = 6
 /** Rutestørrelse i oppslagsnettet, meter. */
 const CELL = 8
 
 export type TrailField = {
-  /** Avstand til nærmeste løypepunkt. `REACH` når det ikke er noen i nærheten. */
+  /** Avstand til nærmeste løypepunkt. `reach` når det ikke er noen i nærheten. */
   distanceTo(x: number, z: number): number
   /**
    * Terrenghøyden justert mot løypa. Nær midtlinja er den løypas egen høyde,
@@ -35,15 +37,18 @@ export type TrailField = {
   benchedHeight(x: number, z: number, raw: number): number
 }
 
-/** Hvor mye løypehøyden veier på en gitt avstand. 1 på midten, 0 ved REACH. */
-function weightAt(distance: number, inner: number): number {
+/** Hvor mye løypehøyden veier på en gitt avstand. 1 på midten, 0 ved reach. */
+function weightAt(distance: number, inner: number, reach: number): number {
   if (distance <= inner) return 1
-  if (distance >= REACH) return 0
-  const t = 1 - (distance - inner) / (REACH - inner)
+  if (distance >= reach) return 0
+  const t = 1 - (distance - inner) / (reach - inner)
   return t * t * (3 - 2 * t)
 }
 
-export function buildTrailField(world: World): TrailField {
+export function buildTrailField(world: World, p: Params): TrailField {
+  const inner = Math.max(p.TRAIL_HALF_WIDTH, 0)
+  const reach = inner + SHOULDER
+
   const sx: number[] = []
   const sz: number[] = []
   const sy: number[] = []
@@ -58,10 +63,10 @@ export function buildTrailField(world: World): TrailField {
     }
   }
 
-  // Hvert punkt legges i alle ruter innenfor REACH, så et oppslag bare
+  // Hvert punkt legges i alle ruter innenfor reach, så et oppslag bare
   // trenger å se i sin egen rute.
   const grid = new Map<number, number[]>()
-  const span = Math.ceil(REACH / CELL)
+  const span = Math.ceil(reach / CELL)
   const key = (cx: number, cz: number) => cx * 100003 + cz
 
   for (let i = 0; i < sx.length; i++) {
@@ -82,7 +87,7 @@ export function buildTrailField(world: World): TrailField {
     const list = grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)))
     if (!list) return -1
     let best = -1
-    let bestD2 = REACH * REACH
+    let bestD2 = reach * reach
     for (const i of list) {
       const dx = sx[i] - x
       const dz = sz[i] - z
@@ -98,7 +103,7 @@ export function buildTrailField(world: World): TrailField {
   return {
     distanceTo(x, z) {
       const i = nearest(x, z)
-      if (i < 0) return REACH
+      if (i < 0) return reach
       return Math.hypot(sx[i] - x, sz[i] - z)
     },
     benchedHeight(x, z, raw) {
@@ -106,7 +111,7 @@ export function buildTrailField(world: World): TrailField {
       if (i < 0) return raw
       const distance = Math.hypot(sx[i] - x, sz[i] - z)
       // Innenfor selve løypebredden ligger bakken nøyaktig i løypehøyde.
-      const w = weightAt(distance, 2.5)
+      const w = weightAt(distance, inner, reach)
       return raw + (sy[i] - raw) * w
     },
   }

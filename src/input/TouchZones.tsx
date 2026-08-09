@@ -7,13 +7,17 @@
  * fingeren lander, også når den siden viser seg å bli et sveip. Et sveip
  * som også ga ett tapp er langt bedre enn et tapp som kom for sent.
  *
- * Å holde inne er gass i løypemaskinen, begge sider er revers. Terskelen for
- * sveip er i piksler, ikke i tid — en rask flikk skal telle.
+ * Halvdelene er alltid ratt for løypemaskinen og alltid tapp for
+ * skiløperen — samme hold, ulik betydning avhengig av hvem som styrer.
+ * Gass og revers har egne soner nede i hjørnet, men bare i løypemaskinmodus:
+ * `data-mode` på rotdiven skrives i en rAF-løkke, akkurat som Hud.tsx skriver
+ * rett til DOM i stedet for å re-rendre React for hvert bilde.
  */
 
 import { useEffect, useRef } from 'react'
+import type { SimStore } from '../engine/simStore'
 import type { Side } from '../sim/types'
-import type { InputSource } from './useInput'
+import type { HoldKey, InputSource } from './useInput'
 
 /** Hvor lenge gløden lever, ms. Må matche varigheten i CSS-en. */
 const GLOW_MS = 320
@@ -23,10 +27,13 @@ type Track = { side: Side; x: number; y: number; swiped: boolean }
 export function TouchZones({
   source,
   swipeThreshold,
+  store,
 }: {
   source: InputSource
   swipeThreshold: number
+  store: SimStore
 }) {
+  const root = useRef<HTMLDivElement>(null)
   const layer = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, Track>())
 
@@ -42,6 +49,17 @@ export function TouchZones({
       setTimeout(() => dot.remove(), GLOW_MS)
     })
   }, [source])
+
+  useEffect(() => {
+    let raf = 0
+    const tick = () => {
+      raf = requestAnimationFrame(tick)
+      const host = root.current
+      if (host) host.dataset.mode = store.curr.mode
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [store])
 
   function sideAt(clientX: number): Side {
     return clientX < window.innerWidth / 2 ? 'L' : 'R'
@@ -75,9 +93,30 @@ export function TouchZones({
     source.setHold(track.side, false)
   }
 
+  /** Gass- og reverssonene: ren hold, ingen tapp eller sveip. */
+  function throttleHandlers(key: HoldKey) {
+    return {
+      onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+        e.preventDefault()
+        e.stopPropagation()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        source.setHold(key, true)
+      },
+      onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+        e.stopPropagation()
+        source.setHold(key, false)
+      },
+      onPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+        e.stopPropagation()
+        source.setHold(key, false)
+      },
+    }
+  }
+
   return (
     <div
       className="tap-zones"
+      ref={root}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={release}
@@ -85,6 +124,8 @@ export function TouchZones({
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="glow-layer" ref={layer} />
+      <div className="throttle-zone throttle-up" {...throttleHandlers('U')} />
+      <div className="throttle-zone throttle-down" {...throttleHandlers('D')} />
     </div>
   )
 }

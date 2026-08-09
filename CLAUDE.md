@@ -19,8 +19,9 @@ med navngitte steder og genererte skilt, traversert av to kjøretøy: skiløpere
 - Fast timestep `FIXED_DT` (1/120) med akkumulator i `src/engine/useSimLoop.ts`,
   frikoblet fra render. Rendering interpolerer mellom `prev` og `curr`.
 - Aldri NaN. Skiløperens `v` er alltid i `[0, MAX_SPEED]`; løypemaskinens `v`
-  er fortegnsatt, i `[-GROOMER_MAX_SPEED * GROOMER_REVERSE_FACTOR, GROOMER_MAX_SPEED]`.
-  Dekket av tester.
+  er fortegnsatt, i `[-GROOMER_MAX_SPEED * GROOMER_REVERSE_FACTOR, GROOMER_MAX_SPEED]`,
+  dens sideveis posisjon `lat` er i `[-lateralLimit(p), lateralLimit(p)]`, og
+  kursavviket `yaw` er i `[-GROOMER_MAX_YAW, GROOMER_MAX_YAW]`. Dekket av tester.
 
 ## Verdenen
 
@@ -49,6 +50,21 @@ med navngitte steder og genererte skilt, traversert av to kjøretøy: skiløpere
 - Grafen muteres kun gjennom `groomSpan()`. Alt annet i `world/` er lesing.
 - `traversal.advance()` er den ene veien å flytte seg langs grafen. Begge
   kjøretøy bruker den. Default-valget i et kryss er minste retningsendring.
+- Løypa har en bredde, `TRAIL_HALF_WIDTH` til hver side av midtlinja, og
+  prepareringen er delt på tvers i `GROOM_LANE_COUNT` baner. `WorldEdge.groomedAt`
+  er derfor et flatt rutenett — bane × bøtte, indeksert `lane * buckets + bucket`
+  — ikke lenger én dimensjon. Bladet (`GROOMER_BLADE_WIDTH`) dekker bare noen av
+  banene, så hele bredden krever flere passeringer. Skiløperen leser alltid
+  midtbanen (`lat = 0`); hun har ingen sideveis posisjon.
+- Løypemaskinens sideveis posisjon `lat` lagres i kantens eget rom — meter mot
+  høyre for `from → to`, samme rom `edgeLateral(edge, s, 1)` og løypebåndet i
+  `render/TrackRibbons.tsx` er definert i. Styringen selv regnes i den
+  førerrelative `q = dir * lat`, fordi føreren opplever `lat` speilvendt når
+  `dir === -1`. De to hendelsene som kan snu `dir` inne i `advance()` krever
+  hver sin oppdatering: et kryss til en annen kant bevarer `q` (den nye kantens
+  `from`/`to` er vilkårlig merket), en blindveisnuing bevarer den fysiske
+  `lat` (maskinen snur på stedet, den flytter seg ikke sideveis av å snu). Se
+  `vehicles/groomer.ts`.
 
 ## Balansen
 

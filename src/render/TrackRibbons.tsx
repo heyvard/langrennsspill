@@ -1,10 +1,16 @@
 /**
- * Løypene: to skispor presset ned i snøen, pluss et bredere skøytefelt til
- * side. Ett bånd per kant i grafen, og bare de kantene som er inne.
+ * Løypene: to skispor presset ned i snøen midt i løypa, med et bredt
+ * groomet felt på hver side ut til løypekanten. Ett bånd per kant i grafen,
+ * og bare de kantene som er inne.
  *
- * Båndet er ikke statisk. Prepareringen leses ut av kantens bøtter og
- * skrives inn i geometrien: upreparert er flatt, ujevnt og matt, preparert
- * har skisporene presset ned og cordfløyel på tvers, og ferskt preparert er
+ * Feltet er ikke ett stykke — det er delt i GROOM_LANE_COUNT baner på tvers,
+ * samme baner løypemaskinen preparerer én om gangen. Grensa mellom to baner
+ * er hard: hver bane får sin egen fargede stripe, ikke en jevn overgang, så
+ * det synes akkurat hvor et pass sluttet og et annet begynte.
+ *
+ * Båndet er ikke statisk. Prepareringen leses ut av rutenettet og skrives
+ * inn i geometrien: upreparert er flatt, ujevnt og matt, preparert har
+ * skisporene presset ned og cordfløyel på tvers, og ferskt preparert er
  * tydelig lysere enn alt annet. Det er den eneste tilbakemeldingen spilleren
  * får på at løypemaskinen gjorde noe.
  *
@@ -17,7 +23,16 @@ import { useEffect, useMemo, useRef } from 'react'
 import { BufferAttribute, BufferGeometry, Color } from 'three'
 import { sampleTime, type SimStore } from '../engine/simStore'
 import type { Params } from '../sim/constants'
-import { bucketIndex, edgeLateral, edgePoint, freshnessOfBucket } from '../sim/world/geometry'
+import {
+  bucketIndex,
+  edgeLateral,
+  edgePoint,
+  freshnessOfCell,
+  halfWidth,
+  laneCount,
+  laneIndex,
+  laneWidth,
+} from '../sim/world/geometry'
 import type { HeightField } from '../sim/world/terrain'
 import { edgeOf, type WorldEdge, type World } from '../sim/world/types'
 import { GROOVE, LANE, LANE_FRESH, UNGROOMED } from './palette'
@@ -32,15 +47,11 @@ const RAIL_FLOOR_WIDTH = 0.08
 const RAIL_DEPTH = 0.045
 /** Løftes så vidt over snøen. Fargen gjør resten av jobben. */
 const LIFT = 0.035
-/** Hvilken side skøytefeltet ligger på, relativt til skisporparet. */
-const LANE_SIDE = 1
-/** Snøstripe mellom ytterste skispor og skøytefeltet, meter. */
-const LANE_GAP = 0.12
-/** Bredden på skøytefeltet, meter. */
-const LANE_WIDTH = 2.6
+/** Snøstripe mellom ytterste skispor og feltet utenfor, meter. */
+const RAIL_GAP = 0.12
 /** Meter mellom tverrsnitt. Cordfløyelen må lese som et mønster. */
 const SEGMENT = 1.0
-/** Rifleamplitude i ferskt preparert skøytefelt, meter. */
+/** Rifleamplitude i ferskt preparert felt. */
 const RIDGE_HEIGHT = 0.02
 /**
  * Ujevnheten i upreparert snø, meter. Holdt lav og lavfrekvent med vilje:
@@ -54,26 +65,119 @@ const ROUGH_WAVELENGTH = 5
 /** Hvor ofte prepareringen leses av på nytt. Den forfaller over minutter. */
 const UPDATE_HZ = 8
 
-const LANE_INNER = LANE_SIDE * (GAUGE + RAIL_WIDTH / 2 + LANE_GAP)
+/** 0 = sporkant, 1 = sporbunn, 2 = flatt felt. */
+type ColumnKind = 0 | 1 | 2
 
-/** Sideveis avstand fra midtlinja for hver kolonne i tverrsnittet. */
-const COLUMNS = [
-  -GAUGE - RAIL_WIDTH / 2,
-  -GAUGE - RAIL_FLOOR_WIDTH / 2,
-  -GAUGE + RAIL_FLOOR_WIDTH / 2,
-  -GAUGE + RAIL_WIDTH / 2,
-  GAUGE - RAIL_WIDTH / 2,
-  GAUGE - RAIL_FLOOR_WIDTH / 2,
-  GAUGE + RAIL_FLOOR_WIDTH / 2,
-  GAUGE + RAIL_WIDTH / 2,
-  LANE_INNER,
-  LANE_INNER + LANE_SIDE * LANE_WIDTH,
-]
+/**
+ * Tverrsnittet, bygget fra Params i stedet for hardkodet: sideveis avstand
+ * per kolonne, hvilken art kolonnen er, hvilken bane den leser preparering
+ * fra, og hvilke nabopar som skal trianguleres.
+ */
+type CrossSection = {
+  offsets: Float64Array
+  kind: ColumnKind[]
+  lane: Int32Array
+  /** Strip-indekser som skal trianguleres. Resten er hull — ekte mellomrom. */
+  bridges: number[]
+}
 
-/** 0 = sporkant, 1 = sporbunn, 2 = skøytefelt. */
-const COLUMN_KIND = [0, 1, 1, 0, 0, 1, 1, 0, 2, 2]
-/** Kolonnepar som skal trianguleres. Hullene er mellom spor og skøytefelt. */
-const BRIDGES = [0, 1, 2, 4, 5, 6, 8]
+/** Alle banegrenser fra -halvbredde til +halvbredde, strengt stigende. */
+function laneBoundaries(p: Params): number[] {
+  const half = halfWidth(p)
+  const n = laneCount(p)
+  const w = laneWidth(p)
+  const out: number[] = []
+  for (let k = 0; k <= n; k++) out.push(-half + k * w)
+  return out
+}
+
+/**
+ * Det flate feltet på én side av sporet, fra sporkanten og ut til
+ * løypekanten. Delt opp ved hver banegrense: hvert segment får to kolonner i
+ * sin egen ende, farget likt, så grensa mot naboen blir skarp i stedet for
+ * å smøres — akkurat slik et enkelt maskinpass ser ut mot et upreparert nabofelt.
+ */
+function buildField(
+  p: Params,
+  sign: 1 | -1,
+  railOuter: number,
+): { offsets: number[]; lane: number[] } {
+  const half = halfWidth(p)
+  const boundaries = laneBoundaries(p)
+  const inField =
+    sign === 1 ? boundaries.filter((b) => b > railOuter) : boundaries.filter((b) => b < -railOuter)
+  // `boundaries` er strengt stigende, og filteret bevarer rekkefølgen, så
+  // `edges` blir stigende uansett side — det er nettopp den rekkefølgen
+  // kolonnene i tverrsnittet skal ligge i.
+  const edges = sign === 1 ? [railOuter, ...inField] : [...inField, -railOuter]
+  // Ingen banegrenser utenfor sporet i det hele tatt: feltet uteblir heller
+  // enn å strekke seg feil vei (bladet er bredere enn løypa).
+  if (edges.length < 2) {
+    return { offsets: [], lane: [] }
+  }
+
+  const offsets: number[] = []
+  const lane: number[] = []
+  for (let i = 0; i < edges.length - 1; i++) {
+    const a = edges[i]
+    const b = edges[i + 1]
+    const l = laneIndex((a + b) / 2, p)
+    offsets.push(a, b)
+    lane.push(l, l)
+  }
+  // Siste kant skal treffe løypekanten nøyaktig, selv om avrunding i
+  // banegrensene skulle avvike med en brøkdel av en millimeter.
+  offsets[offsets.length - 1] = sign * half
+  return { offsets, lane }
+}
+
+function buildCrossSection(p: Params): CrossSection {
+  const railOuter = GAUGE + RAIL_WIDTH / 2 + RAIL_GAP
+  const left = buildField(p, -1, railOuter)
+  const right = buildField(p, 1, railOuter)
+
+  const railLeft = [
+    -GAUGE - RAIL_WIDTH / 2,
+    -GAUGE - RAIL_FLOOR_WIDTH / 2,
+    -GAUGE + RAIL_FLOOR_WIDTH / 2,
+    -GAUGE + RAIL_WIDTH / 2,
+  ]
+  const railRight = [
+    GAUGE - RAIL_WIDTH / 2,
+    GAUGE - RAIL_FLOOR_WIDTH / 2,
+    GAUGE + RAIL_FLOOR_WIDTH / 2,
+    GAUGE + RAIL_WIDTH / 2,
+  ]
+  const railKind: ColumnKind[] = [0, 1, 1, 0]
+
+  const offsets = [...left.offsets, ...railLeft, ...railRight, ...right.offsets]
+  const kind: ColumnKind[] = [
+    ...left.offsets.map((): ColumnKind => 2),
+    ...railKind,
+    ...railKind,
+    ...right.offsets.map((): ColumnKind => 2),
+  ]
+  const lane = [
+    ...left.lane,
+    ...railLeft.map((o) => laneIndex(o, p)),
+    ...railRight.map((o) => laneIndex(o, p)),
+    ...right.lane,
+  ]
+
+  // Trianguler hvert par innad i et segment/spor, aldri mellom to segmenter
+  // eller mellom sporet og feltet utenfor — det er der hullene skal være.
+  const bridges: number[] = []
+  let i = 0
+  for (let s = 0; s < left.offsets.length / 2; s++, i += 2) bridges.push(i)
+  // i peker nå på venstre spors første kolonne. Hull: felt -> venstre spor.
+  bridges.push(i, i + 1, i + 2)
+  i += 4 // hull: venstre spor -> høyre spor
+  bridges.push(i, i + 1, i + 2)
+  i += 4 // hull: høyre spor -> felt
+  for (let s = 0; s < right.offsets.length / 2; s++, i += 2) bridges.push(i)
+
+  return { offsets: new Float64Array(offsets), kind, lane: new Int32Array(lane), bridges }
+}
 
 /** Deterministisk verdi i [-1, 1] fra et heltall. */
 function hash(i: number): number {
@@ -96,6 +200,7 @@ function jitter(i: number): number {
 type Ribbon = {
   geometry: BufferGeometry
   sections: number
+  cross: CrossSection
   /** Terrenghøyde pluss LIFT, per verteks. Grunnlinja høydene regnes fra. */
   baseY: Float32Array
   /** Prepareringsbøtta hvert tverrsnitt hører til. */
@@ -103,8 +208,9 @@ type Ribbon = {
 }
 
 function buildRibbon(edge: WorldEdge, height: HeightField, p: Params): Ribbon {
+  const cross = buildCrossSection(p)
+  const cols = cross.offsets.length
   const n = Math.max(8, Math.round(edge.length / SEGMENT))
-  const cols = COLUMNS.length
   const count = (n + 1) * cols
 
   const positions = new Float32Array(count * 3)
@@ -122,7 +228,7 @@ function buildRibbon(edge: WorldEdge, height: HeightField, p: Params): Ribbon {
     // snittet forskyves like mye som midten er planert.
     const bench = centre.y - height.heightAt(centre.x, centre.z)
     for (let col = 0; col < cols; col++) {
-      const off = COLUMNS[col]
+      const off = cross.offsets[col]
       const x = centre.x + lat.x * off
       const z = centre.z + lat.z * off
       const v = i * cols + col
@@ -132,10 +238,10 @@ function buildRibbon(edge: WorldEdge, height: HeightField, p: Params): Ribbon {
     }
   }
 
-  const indices = new Uint32Array(n * BRIDGES.length * 6)
+  const indices = new Uint32Array(n * cross.bridges.length * 6)
   let k = 0
   for (let i = 0; i < n; i++) {
-    for (const col of BRIDGES) {
+    for (const col of cross.bridges) {
       const a = i * cols + col
       const b = a + 1
       const c = a + cols
@@ -156,7 +262,7 @@ function buildRibbon(edge: WorldEdge, height: HeightField, p: Params): Ribbon {
   geometry.setAttribute('color', new BufferAttribute(colors, 3))
   geometry.setIndex(new BufferAttribute(indices, 1))
 
-  return { geometry, sections: n, baseY, bucket }
+  return { geometry, sections: n, cross, baseY, bucket }
 }
 
 const railColour = new Color()
@@ -164,36 +270,42 @@ const laneColour = new Color()
 
 /** Skriver preparering inn i høyder og farger. Ingen normaler å regne om. */
 function refresh(ribbon: Ribbon, edge: WorldEdge, now: number, p: Params): void {
-  const cols = COLUMNS.length
+  const { cross } = ribbon
+  const cols = cross.offsets.length
   const position = ribbon.geometry.getAttribute('position') as BufferAttribute
   const colour = ribbon.geometry.getAttribute('color') as BufferAttribute
   const pos = position.array as Float32Array
   const col = colour.array as Float32Array
 
   for (let i = 0; i <= ribbon.sections; i++) {
-    const f = freshnessOfBucket(edge, ribbon.bucket[i], now, p)
+    const bucket = ribbon.bucket[i]
     const ridge = (i % 2 === 0 ? 1 : -1) * RIDGE_HEIGHT
     const rough = jitter(i) * ROUGH_HEIGHT
-    const laneOffset = rough + (ridge - rough) * f
-
-    // Skisporet finnes ikke før noen har satt det. Det trykkes gradvis ned.
-    railColour.copy(UNGROOMED).lerp(GROOVE, f)
-    laneColour.copy(UNGROOMED).lerp(LANE, Math.min(f * 2, 1)).lerp(LANE_FRESH, f)
 
     for (let c = 0; c < cols; c++) {
       const v = i * cols + c
-      const kind = COLUMN_KIND[c]
+      const kind = cross.kind[c]
+      const f = freshnessOfCell(edge, cross.lane[c] * edge.buckets + bucket, now, p)
+
       pos[v * 3 + 1] =
         kind === 1
           ? ribbon.baseY[v] - RAIL_DEPTH * f
           : kind === 2
-            ? ribbon.baseY[v] + laneOffset
+            ? ribbon.baseY[v] + rough + (ridge - rough) * f
             : ribbon.baseY[v]
 
-      const source = kind === 2 ? laneColour : railColour
-      col[v * 3] = source.r
-      col[v * 3 + 1] = source.g
-      col[v * 3 + 2] = source.b
+      if (kind === 2) {
+        laneColour.copy(UNGROOMED).lerp(LANE, Math.min(f * 2, 1)).lerp(LANE_FRESH, f)
+        col[v * 3] = laneColour.r
+        col[v * 3 + 1] = laneColour.g
+        col[v * 3 + 2] = laneColour.b
+      } else {
+        // Skisporet finnes ikke før noen har satt det. Det trykkes gradvis ned.
+        railColour.copy(UNGROOMED).lerp(GROOVE, f)
+        col[v * 3] = railColour.r
+        col[v * 3 + 1] = railColour.g
+        col[v * 3 + 2] = railColour.b
+      }
     }
   }
 

@@ -44,6 +44,17 @@ export type GroomerState = {
   placement: Placement
   /** Fart i m/s. Negativ er revers — løypemaskinen er det eneste som rygger. */
   v: number
+  /**
+   * Sideveis posisjon i kantens eget rom: meter mot høyre for `from → to`.
+   * Føreren opplever den speilvendt når `dir === -1`. Alltid innenfor
+   * `lateralLimit(p)` — løypemaskinen er det eneste som ikke går på skinner.
+   */
+  lat: number
+  /**
+   * Kursavvik fra løypas tangent, radianer. Positiv er mot førerens høyre.
+   * Alltid i `[-GROOMER_MAX_YAW, GROOMER_MAX_YAW]`.
+   */
+  yaw: number
 }
 
 /**
@@ -68,10 +79,18 @@ export type StepInput = {
   taps: Tap[]
   /** -1 revers, 0 tomgang, 1 gass. Bare løypemaskinen bryr seg. */
   throttle: -1 | 0 | 1
+  /** -1 ratt mot venstre, 0 rett fram, 1 mot høyre. Bare løypemaskinen. */
+  steer: -1 | 0 | 1
   /** Sveip registrert i dette steget, eller null. */
   turn: Side | null
   /** Hvor mange ganger M ble trykket i dette steget. */
   modeToggles: number
 }
 
-export const IDLE_INPUT: StepInput = { taps: [], throttle: 0, turn: null, modeToggles: 0 }
+export const IDLE_INPUT: StepInput = {
+  taps: [],
+  throttle: 0,
+  steer: 0,
+  turn: null,
+  modeToggles: 0,
+}

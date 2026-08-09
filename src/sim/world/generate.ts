@@ -16,7 +16,7 @@
 
 import type { Params } from '../constants'
 import { clamp, makeRng } from '../rng'
-import { bucketCount, maxGradientOfProfile } from './geometry'
+import { bucketCount, laneCount, maxGradientOfProfile } from './geometry'
 import { pickName } from './names'
 import {
   circumcircle,
@@ -709,10 +709,13 @@ export function generate(seed: number, p: Params): World {
   const outgoing = new Map<NodeId, EdgeId[]>()
   for (const id of nodeIds) outgoing.set(id, [])
 
+  const lanes = laneCount(p)
+
   built.forEach((geo, i) => {
     const id: EdgeId = `e${pad(i)}`
     const [a, b] = chordEnds[i]
     const origin = graphEdges[chordOrigin[i]]
+    const buckets = bucketCount(geo.length, p)
     const edge: WorldEdge = {
       id,
       from: nodeIds[a],
@@ -724,7 +727,9 @@ export function generate(seed: number, p: Params): World {
       name: `${poiNames[origin[0]]}–${poiNames[origin[1]]}`,
       difficulty: difficultyOf(geo.maxGradient, p),
       maxGradient: geo.maxGradient,
-      groomedAt: new Float64Array(bucketCount(geo.length, p)).fill(NEVER_GROOMED),
+      buckets,
+      // Rutenettet er baner × bøtter, lagret flatt som `lane * buckets + i`.
+      groomedAt: new Float64Array(lanes * buckets).fill(NEVER_GROOMED),
     }
     edges.set(id, edge)
     outgoing.get(edge.from)!.push(id)
