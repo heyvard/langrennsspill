@@ -1,19 +1,35 @@
 /**
- * 1D-fysikk langs sporet. Deterministisk, fast timestep, ingen NaN.
+ * Orkestratoren. Fast timestep, deterministisk, ingen NaN.
  *
- * Fortegn: theta = atan(gradientAt(s)), så positiv theta er motbakke.
- * Gravitasjonsleddet må derfor være negativt for at utforbakke skal
- * akselerere — briefens `G * sin(theta)` skrevet ut i denne konvensjonen.
+ * Selve fysikken bor i vehicles/. Her ligger bare det som er felles for begge
+ * kjøretøy: hvilket av dem som er aktivt, og hvordan et sveip blir til et
+ * valg i neste kryss.
  */
 
 import type { Params } from './constants'
-import { applyTap, evaluateTap, initialCadence } from './cadence'
-import { clamp } from './rng'
-import type { Track } from './track'
-import type { State, Tap } from './types'
+import { initialCadence } from './cadence'
+import { advance, nextNodeDistance, startPlacement, straightest, turning } from './traversal'
+import type { State, StepInput, Tap } from './types'
+import type { World } from './world/types'
+import { stepGroomer } from './vehicles/groomer'
+import { stepSkier } from './vehicles/skier'
 
-export function initialState(): State {
-  return { t: 0, s: 0, v: 0, cadence: initialCadence() }
+/** Hvor langt ut på første kant løperen står ved oppstart, meter. */
+const START_OFFSET = 30
+/** Hvor langt bak løperen løypemaskinen står, meter. */
+const GROOMER_OFFSET = 25
+
+export function initialState(world: World): State {
+  // Et stykke ut på kanten, ikke oppi skiltstolpen på stadion.
+  const start = advance(startPlacement(world), START_OFFSET, world, straightest)
+  return {
+    t: 0,
+    mode: 'skier',
+    skier: { placement: start, v: 0, cadence: initialCadence() },
+    // Litt bak, så den ikke står oppi løperen i det bildet kommer opp.
+    groomer: { placement: advance(start, -GROOMER_OFFSET, world, straightest), v: 0 },
+    pendingTurn: null,
+  }
 }
 
 /**
@@ -34,42 +50,55 @@ export function partitionTaps(taps: Tap[], tEnd: number): { due: Tap[]; rest: Ta
   return { due, rest }
 }
 
-/**
- * Ett fast tidssteg. `taps` er tappene som hører til dette steget —
- * de med t >= state.t + dt ignoreres og hører hjemme i et senere steg.
- */
-export function step(state: State, taps: Tap[], dt: number, track: Track, p: Params): State {
+/** Placementen til kjøretøyet spilleren styrer akkurat nå. */
+export function activePlacement(state: State) {
+  return state.mode === 'skier' ? state.skier.placement : state.groomer.placement
+}
+
+/** Farten til det aktive kjøretøyet. Kan være negativ i løypemaskinen. */
+export function activeSpeed(state: State): number {
+  return state.mode === 'skier' ? state.skier.v : state.groomer.v
+}
+
+export function step(
+  state: State,
+  input: StepInput,
+  dt: number,
+  world: World,
+  p: Params,
+): State {
   if (!Number.isFinite(dt) || dt <= 0) return state
 
   const tEnd = state.t + dt
-  const theta = Math.atan(track.gradientAt(state.s))
 
-  let v = state.v
-  let cadence = state.cadence
+  let mode = state.mode
+  for (let i = 0; i < input.modeToggles; i++) mode = mode === 'skier' ? 'groomer' : 'skier'
 
-  // Impulser først, så de virker gjennom hele steget.
-  const { due } = partitionTaps(taps, tEnd)
-  for (const tap of due) {
-    const evaluated = evaluateTap(tap, cadence, v, theta, p)
-    v += evaluated.impulse
-    cadence = applyTap(tap, evaluated.quality)
+  const before = mode === 'skier' ? state.skier.placement : state.groomer.placement
+
+  // Et sveip teller bare når krysset er nær nok til at valget gir mening.
+  let pendingTurn = state.pendingTurn
+  if (
+    input.turn !== null &&
+    nextNodeDistance(before, world) <= Math.max(p.JUNCTION_PREVIEW_DISTANCE, 0)
+  ) {
+    pendingTurn = input.turn
   }
 
-  const aGravity = -p.G * Math.sin(theta)
-  // Friksjon virker bare mens løperen faktisk glir — ellers ville den
-  // dyttet farten under null.
-  const aFriction = v > 0 ? -p.MU * p.G * Math.cos(theta) : 0
-  const aDrag = -p.K_DRAG * v * v
+  const chooser = pendingTurn === null ? straightest : turning(pendingTurn)
 
-  v += (aGravity + aFriction + aDrag) * dt
-
-  if (!Number.isFinite(v)) v = 0
-  v = clamp(v, 0, Math.max(p.MAX_SPEED, 0))
-
-  return {
-    t: tEnd,
-    s: track.wrap(state.s + v * dt),
-    v,
-    cadence,
+  let skier = state.skier
+  let groomer = state.groomer
+  if (mode === 'skier') {
+    const { due } = partitionTaps(input.taps, tEnd)
+    skier = stepSkier(skier, due, state.t, dt, world, p, chooser)
+  } else {
+    groomer = stepGroomer(groomer, input.throttle, state.t, dt, world, p, chooser)
   }
+
+  // Passerte vi en node, er valget brukt opp — også når vi snudde i en blindvei.
+  const after = mode === 'skier' ? skier.placement : groomer.placement
+  if (after.edge !== before.edge || after.dir !== before.dir) pendingTurn = null
+
+  return { t: tEnd, mode, skier, groomer, pendingTurn }
 }

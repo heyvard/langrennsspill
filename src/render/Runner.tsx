@@ -8,10 +8,10 @@
 import { useFrame } from '@react-three/fiber'
 import { useLayoutEffect, useRef } from 'react'
 import { Matrix4, Object3D, Vector3, type Group, type SpotLight } from 'three'
-import { sampleS } from '../engine/simStore'
+import { createPose, samplePose } from '../engine/simStore'
 import type { SimStore } from '../engine/simStore'
 import { clamp } from '../sim/rng'
-import type { Track } from '../sim/track'
+import type { World } from '../sim/world/types'
 import { GEAR, RUNNER } from './palette'
 
 // --- Kropp ---
@@ -80,12 +80,12 @@ function armAndPole(sign: 1 | -1) {
 
 export function Runner({
   store,
-  track,
+  world,
   intensity,
   angle,
 }: {
   store: SimStore
-  track: Track
+  world: World
   intensity: number
   angle: number
 }) {
@@ -107,29 +107,28 @@ export function Runner({
     if (lamp.current && aim.current) lamp.current.target = aim.current
   }, [])
 
+  const pose = useRef(createPose())
   const forward = useRef(new Vector3())
   const matrix = useRef(new Matrix4())
+  const origin = useRef(new Vector3())
 
   useFrame(() => {
     const g = group.current
     if (!g) return
 
-    const s = sampleS(store, track.loopLength)
-    const p = track.positionAt(s)
-    const t = track.tangentAt(s)
-
+    const p = samplePose(store, world, 'skier', pose.current)
     g.position.set(p.x, p.y, p.z)
 
     // Matrix4.lookAt legger lokal +Z mot (eye - target). Med øyet i origo
     // og målet framover blir lokal -Z framover — samme konvensjon som lys
     // og kamera bruker.
-    forward.current.set(t.x, t.y, t.z)
-    matrix.current.lookAt(new Vector3(0, 0, 0), forward.current, UP)
+    forward.current.set(p.tx, p.ty, p.tz)
+    matrix.current.lookAt(origin.current, forward.current, UP)
     g.quaternion.setFromRotationMatrix(matrix.current)
 
     // Nytt tapp registrert siden sist? Book det inn på riktig side, så de
     // to stavene svinger uavhengig av hverandre.
-    const cadence = store.curr.cadence
+    const cadence = store.curr.skier.cadence
     if (cadence.lastTapTime !== seenTapTime.current) {
       seenTapTime.current = cadence.lastTapTime
       if (cadence.lastTapTime !== null) {

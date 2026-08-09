@@ -11,6 +11,10 @@ export const SNOW = new Color('#dde5f0')
 export const GROOVE = new Color('#94a6c0')
 /** Skøytesporet — kjørt og pakket, men ikke presset så dypt/mørkt som skisporet. */
 export const LANE = new Color('#c7d2e2')
+/** Ferskt preparert. Merkbart lysere enn alt annet — det er hele beløningen. */
+export const LANE_FRESH = new Color('#eef4ff')
+/** Upreparert løypetrasé. Matt og litt mørkere enn snøen omkring. */
+export const UNGROOMED = new Color('#a8b6cc')
 /** Granskogen. Mørk barskoggrønn — leser grønt i sol, nesten svart i tåka. */
 export const SPRUCE = new Color('#2e4a34')
 /** Løperen. Lys grå, lys nok til å lese mot snøen etter at

@@ -47,19 +47,24 @@ export function sideFactor(side: Side, cadence: CadenceState, p: Params): number
 /**
  * Vurderer ett tapp. Aller første tapp har ingen forrige å måle mot:
  * det gir ingen fart, men etablerer rytmen.
+ *
+ * @param grip Hvor godt frasparket biter, 0–1. Kommer fra prepareringen:
+ *   i et ferskt spor står skia stille under kicken, i løssnø glipper den.
+ *   Dette er den fysiske grunnen til at preparering betyr noe i langrenn.
  */
 export function evaluateTap(
   tap: Tap,
   cadence: CadenceState,
   v: number,
   theta: number,
+  grip: number,
   p: Params,
 ): TapEval {
   const slope = slopeFactor(theta, p)
   const side = sideFactor(tap.side, cadence, p)
 
   if (cadence.lastTapTime === null) {
-    return { quality: 0, sideFactor: side, slopeFactor: slope, impulse: 0 }
+    return { quality: 0, sideFactor: side, slopeFactor: slope, grip, impulse: 0 }
   }
 
   const elapsed = tap.t - cadence.lastTapTime
@@ -70,8 +75,14 @@ export function evaluateTap(
     quality,
     sideFactor: side,
     slopeFactor: slope,
-    impulse: p.TAP_IMPULSE * quality * side * slope,
+    grip,
+    impulse: p.TAP_IMPULSE * quality * side * slope * grip,
   }
+}
+
+/** Festet i sporet der man står. 1 i ferskt spor, GRIP_UNGROOMED i løssnø. */
+export function gripFrom(freshness: number, p: Params): number {
+  return clamp(p.GRIP_UNGROOMED + (1 - p.GRIP_UNGROOMED) * clamp(freshness, 0, 1), 0, 1)
 }
 
 /** Ny takt-tilstand etter et registrert tapp. Tappet er alt som huskes. */

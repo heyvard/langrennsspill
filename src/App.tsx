@@ -3,14 +3,20 @@ import { Leva } from 'leva'
 import { useMemo, useRef } from 'react'
 import { createSimStore } from './engine/simStore'
 import { TouchZones } from './input/TouchZones'
-import { useTaps } from './input/useTaps'
+import { useInput } from './input/useInput'
+import { plantForest } from './render/planting'
 import { Scene } from './render/Scene'
-import { createTrack } from './sim/track'
+import { buildTrailField } from './render/trailField'
+import { WORLD_PARAM_KEYS } from './sim/constants'
+import { generate } from './sim/world/generate'
+import { generateSigns } from './sim/world/signs'
+import { createHeightField } from './sim/world/terrain'
 import { Hud } from './ui/Hud'
+import { Minimap } from './ui/Minimap'
 import { useTuning } from './ui/useTuning'
 
 export default function App() {
-  const source = useTaps()
+  const source = useInput()
   const { params, view } = useTuning()
 
   // Simuleringen leser parametrene fra en ref, så sliderne slår inn med
@@ -18,33 +24,58 @@ export default function App() {
   const paramsRef = useRef(params)
   paramsRef.current = params
 
-  const store = useMemo(() => createSimStore(), [])
-
-  // Sporet bygges bare på nytt når noe som faktisk former det endrer seg.
-  const track = useMemo(
-    () => createTrack(view.seed, params),
+  // Verdenen bygges bare på nytt når noe som faktisk former den endrer seg.
+  // Nøkkelen er en streng, ellers ville useMemo fått et nytt array hver render.
+  const worldKey = `${view.seed}|${WORLD_PARAM_KEYS.map((k) => params[k]).join(',')}`
+  const bundle = useMemo(() => {
+    const world = generate(view.seed, paramsRef.current)
+    const height = createHeightField(view.seed, paramsRef.current)
+    const trails = buildTrailField(world)
+    return {
+      world,
+      height,
+      trails,
+      signs: generateSigns(world, paramsRef.current),
+      forest: plantForest(world, height, trails, view.seed),
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      view.seed,
-      params.LOOP_LENGTH,
-      params.TRACK_WOBBLE,
-      params.TERRAIN_AMPLITUDE,
-      params.TERRAIN_FREQUENCY,
-    ],
-  )
+  }, [worldKey])
+
+  // Ny verden betyr nye kant-ID-er, så simuleringen må starte på nytt med den.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const store = useMemo(() => createSimStore(bundle.world), [bundle])
 
   return (
     <>
       <Canvas
         dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
-        camera={{ fov: 62, near: 0.1, far: 400 }}
+        camera={{ fov: 62, near: 0.1, far: 500 }}
       >
-        <Scene store={store} track={track} paramsRef={paramsRef} source={source} view={view} />
+        {/* Nøkkelen står her og ikke på Canvas: en ny verden skal bygge
+            scenen på nytt, ikke rive ned WebGL-konteksten. */}
+        <Scene
+          key={worldKey}
+          store={store}
+          world={bundle.world}
+          height={bundle.height}
+          forest={bundle.forest}
+          trails={bundle.trails}
+          signs={bundle.signs}
+          paramsRef={paramsRef}
+          source={source}
+          view={view}
+        />
       </Canvas>
 
-      <TouchZones source={source} />
-      <Hud store={store} track={track} paramsRef={paramsRef} visible={view.showHud} />
+      <TouchZones source={source} swipeThreshold={params.SWIPE_THRESHOLD_PX} />
+      <Hud store={store} world={bundle.world} paramsRef={paramsRef} visible={view.showHud} />
+      <Minimap
+        store={store}
+        world={bundle.world}
+        paramsRef={paramsRef}
+        visible={view.showMinimap}
+      />
       <Leva collapsed titleBar={{ title: 'tuning' }} />
     </>
   )
