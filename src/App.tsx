@@ -13,6 +13,7 @@ import { generateSigns } from './sim/world/signs'
 import { createHeightField } from './sim/world/terrain'
 import { Hud } from './ui/Hud'
 import { Minimap } from './ui/Minimap'
+import { ModeButton } from './ui/ModeButton'
 import { useTuning } from './ui/useTuning'
 
 export default function App() {
@@ -69,6 +70,7 @@ export default function App() {
       </Canvas>
 
       <TouchZones source={source} swipeThreshold={params.SWIPE_THRESHOLD_PX} store={store} />
+      <ModeButton source={source} store={store} />
       <Hud store={store} world={bundle.world} paramsRef={paramsRef} visible={view.showHud} />
       <Minimap
         store={store}
@@ -76,7 +78,8 @@ export default function App() {
         paramsRef={paramsRef}
         visible={view.showMinimap}
       />
-      <Leva collapsed titleBar={{ title: 'tuning' }} />
+      {/* Tuning-panelet er et utviklerverktøy — det skal ikke følge med i produksjonsbygget. */}
+      <Leva collapsed titleBar={{ title: 'tuning' }} hidden={!import.meta.env.DEV} />
     </>
   )
 }

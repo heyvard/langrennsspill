@@ -118,6 +118,28 @@ canvas {
   opacity: 1;
 }
 
+/* --- Modusbryter ---------------------------------------------------------- */
+
+.mode-button {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  left: calc(env(safe-area-inset-left, 0px) + 24px);
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 150, 190, 0.35);
+  background: rgba(120, 150, 190, 0.14);
+  color: var(--hud-fg);
+  font-size: 28px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* --- Debug-HUD ---------------------------------------------------------- */
 
 .hud {
