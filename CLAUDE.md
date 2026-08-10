@@ -45,7 +45,19 @@ med navngitte steder og genererte skilt, traversert av to kjøretøy: skiløpere
   konvergerer alltid, så `MAX_GRADIENT` er et løfte og ikke et ønske.
 - `render/trailField.ts` skjærer terrenget inn mot løypehøyden. Uten det ligger
   den planerte traseen begravd der planeringen skar. Samme oppslag holder
-  trærne ute av sporet.
+  trærne ute av sporet. Oppslaget er nærmeste-punkt, så `SAMPLE_SPACING` er
+  også hvor grovt bakken trappes langs løypa — trinnet er halve avstanden
+  ganger stigningen, og blir det større enn løftet i `TrackRibbons`, stikker
+  terrenget opp gjennom løypebåndet i flekker.
+- Løypebåndet er vannrett på tvers, i løypehøyde pluss `LIFT`, ikke drapert
+  over terrenget: bakken er alt dratt opp i løypehøyde i hele bredden, så et
+  bånd med sidefall ville ligget begravd i den ene ytterkanten. `LIFT` måles
+  fra sporbunnen og må derfor være større enn `RAIL_DEPTH`.
+- Tverrsnittet er én sammenhengende strip: to par klassiskspor ute mot hver
+  kant, skøytefelt mellom. Sporene er kolonner som alltid finnes, men som
+  ligger i flukt med flata og har samme farge til noen har kjørt der — det er
+  dét som gjør upreparert løype til blank snø. Begge kolonnene i et par leser
+  samme bane, så et par settes helt eller ikke i det hele tatt.
 - Skilt genereres fra grafen med Dijkstra, aldri skrevet for hånd.
 - Grafen muteres kun gjennom `groomSpan()`. Alt annet i `world/` er lesing.
 - `traversal.advance()` er den ene veien å flytte seg langs grafen. Begge
@@ -54,7 +66,9 @@ med navngitte steder og genererte skilt, traversert av to kjøretøy: skiløpere
   prepareringen er delt på tvers i `GROOM_LANE_COUNT` baner. `WorldEdge.groomedAt`
   er derfor et flatt rutenett — bane × bøtte, indeksert `lane * buckets + bucket`
   — ikke lenger én dimensjon. Bladet (`GROOMER_BLADE_WIDTH`) dekker bare noen av
-  banene, så hele bredden krever flere passeringer. Skiløperen leser alltid
+  banene, så hele bredden krever flere passeringer. En bøtte stemples hel så
+  snart maskinen er inne i den, så `GROOM_BUCKET_LENGTH` er også hvor langt
+  foran bladet sporet kan rekke å dukke opp. Skiløperen leser alltid
   midtbanen (`lat = 0`); hun har ingen sideveis posisjon.
 - Løypemaskinens sideveis posisjon `lat` lagres i kantens eget rom — meter mot
   høyre for `from → to`, samme rom `edgeLateral(edge, s, 1)` og løypebåndet i

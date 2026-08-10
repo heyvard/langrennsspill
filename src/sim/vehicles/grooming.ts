@@ -15,9 +15,9 @@ import { edgeOf, type EdgeId, type World } from '../world/types'
  * Glidefriksjonen der man står. Ferskt preparert spor er nesten dobbelt så
  * raskt som upreparert snø, og fordelen visner jevnt over GROOM_DECAY_TIME.
  *
- * Leses alltid i midtbanen: skiløperen ligger i sporet på midtlinja og har
- * ingen sideveis posisjon. Preparerer maskinen bare ytterkantene, blir hun
- * altså ikke raskere — hun må ha midtbanen.
+ * Leses alltid i midtbanen: skiløperen holder seg på midtlinja og har ingen
+ * sideveis posisjon. Preparerer maskinen bare ytterkantene, blir hun altså
+ * ikke raskere — hun må ha midtbanen.
  */
 export function muAt(world: World, placement: Placement, now: number, p: Params): number {
   const edge = edgeOf(world, placement.edge)

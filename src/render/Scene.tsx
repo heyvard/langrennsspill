@@ -71,13 +71,7 @@ export function Scene({
     <>
       <Atmosphere mood={mood} fogDensity={view.fogDensity} />
       <Terrain chunks={streamed.chunks} height={height} trails={trails} />
-      <TrackRibbons
-        edgeIds={streamed.edgeIds}
-        world={world}
-        store={store}
-        height={height}
-        paramsRef={paramsRef}
-      />
+      <TrackRibbons edgeIds={streamed.edgeIds} world={world} store={store} paramsRef={paramsRef} />
       <Trees chunks={streamed.chunks} forest={forest} />
       <Signs signs={signs} nodeIds={streamed.nodeIds} world={world} height={height} />
       {/* Lykta slukner av seg selv i dagslys — lampFactor er 0 der. */}

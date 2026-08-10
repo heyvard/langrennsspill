@@ -67,9 +67,9 @@ export type Params = {
   /** Grunnfrekvens i terrengstøyen, 1/meter. Høyt gir kortere bakker. */
   TERRAIN_FREQUENCY: number
   /**
-   * Halv løypebredde, meter. Løypa er symmetrisk om midtlinja, og skisporene
-   * ligger i midten — skiløperen renderes fra midtlinja og har ingen
-   * sideveis posisjon.
+   * Halv løypebredde, meter. Løypa er symmetrisk om midtlinja: et par
+   * klassiskspor ute mot hver kant og skøytefeltet mellom dem. Skiløperen
+   * renderes fra midtlinja og har ingen sideveis posisjon.
    */
   TRAIL_HALF_WIDTH: number
 
@@ -78,8 +78,8 @@ export type Params = {
   GROOM_BUCKET_LENGTH: number
   /**
    * Antall baner på tvers av løypa. Oppløsningen på halvpreparerte bredder.
-   * Tvinges opp til nærmeste oddetall, så det finnes en midtbane som dekker
-   * skisporene — ellers kunne ett spor blitt preparert og det andre ikke.
+   * Tvinges opp til nærmeste oddetall, så det finnes en midtbane sentrert på
+   * midtlinja — banen skiløperen leser, og midten av skøytefeltet.
    */
   GROOM_LANE_COUNT: number
   /** Friksjon i ferskt preparert spor. */
@@ -173,8 +173,11 @@ export const DEFAULTS: Params = {
   // maskinen har en meter og en halv å styre på til hver side.
   TRAIL_HALF_WIDTH: 3,
 
-  GROOM_BUCKET_LENGTH: 10,
-  // Oddetall, så midtbanen dekker skisporene. Sju baner à ~0.86 m.
+  // Kort nok til at sporet dukker opp under maskinen og ikke foran den: en
+  // bøtte stemples hel så snart maskinen er inne i den, så bøttelengden er
+  // også hvor langt fram prepareringen kan løpe fra bladet.
+  GROOM_BUCKET_LENGTH: 3,
+  // Oddetall, så én bane ligger sentrert på midtlinja. Sju baner à ~0.86 m.
   GROOM_LANE_COUNT: 7,
   MU_GROOMED: 0.02,
   MU_UNGROOMED: 0.075,

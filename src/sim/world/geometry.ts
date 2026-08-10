@@ -167,9 +167,10 @@ export function bucketIndex(edge: WorldEdge, s: number, p: Params): number {
 }
 
 /**
- * Antall baner på tvers. Alltid et oddetall, så midtbanen dekker lat = 0 og
- * dermed begge skisporene — ellers ville et spor kunne bli preparert og det
- * andre ikke, av samme passering.
+ * Antall baner på tvers. Alltid et oddetall, så det finnes én bane sentrert
+ * på lat = 0: banen skiløperen leser, og midten av skøytefeltet mellom de to
+ * sporparene. Med et like antall ville midtlinja falt i en baneskjøt, og hva
+ * skiløperen kjente under skia hadde avhengt av avrundingen der.
  */
 export function laneCount(p: Params): number {
   const n = Math.max(1, Math.round(p.GROOM_LANE_COUNT))

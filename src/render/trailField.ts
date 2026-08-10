@@ -16,8 +16,13 @@ import type { Params } from '../sim/constants'
 import { edgePoint } from '../sim/world/geometry'
 import type { World } from '../sim/world/types'
 
-/** Avstand mellom punktene løypa registreres med, meter. */
-const SAMPLE_SPACING = 4
+/**
+ * Avstand mellom punktene løypa registreres med, meter. Oppslaget er
+ * nærmeste-punkt, så avstanden er også hvor grovt bakken trappes langs løypa:
+ * halve avstanden ganger stigningen. Fire meter ga trinn på en kvart meter i
+ * de bratteste bakkene, nok til at terrenget stakk opp gjennom løypebåndet.
+ */
+const SAMPLE_SPACING = 1
 /**
  * Hvor mye lenger enn halve løypebredden oppslaget svarer. Utenfor er
  * terrenget urørt. Holdt stramt: gjør skulderen bred, blir skjæringen en
