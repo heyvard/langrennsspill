@@ -133,37 +133,51 @@ canvas {
 
 /* --- Modusbryter ---------------------------------------------------------- */
 
-.mode-button {
+.mode-switch {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
-  left: calc(env(safe-area-inset-left, 0px) + 24px);
-  width: 64px;
-  height: 64px;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  width: 88px;
+  height: 40px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: 20px;
   border: 1px solid rgba(120, 150, 190, 0.35);
   background: rgba(120, 150, 190, 0.14);
-  color: var(--hud-fg);
-  font-size: 28px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mode-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(207, 224, 245, 0.9);
+  transition: transform 150ms ease-out;
+  will-change: transform;
+}
+
+.mode-switch-option {
+  position: relative;
+  z-index: 1;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  touch-action: none;
-  -webkit-tap-highlight-color: transparent;
-  transition: bottom 150ms ease-out;
-}
-
-/* Venstre stikke bor i samme hjørne som modusknappen i løypemaskinmodus. */
-:root[data-mode="groomer"] .mode-button {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--stick-size) + 40px);
+  font-size: 18px;
+  pointer-events: none;
 }
 
 /* --- Debug-HUD ---------------------------------------------------------- */
 
 .hud {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  /* Under modusbryteren, som eier øverste venstre hjørne. */
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
   left: calc(env(safe-area-inset-left, 0px) + 12px);
   pointer-events: none;
   font-size: 12px;

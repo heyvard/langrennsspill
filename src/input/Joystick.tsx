@@ -2,7 +2,7 @@
  * Én virtuell joystick: en ring med en knott som følger tommelen.
  *
  * Knotten flyttes ved å skrive `transform` rett til DOM i pekerhendelsen, ikke
- * gjennom React-state — samme grunn som Hud.tsx og ModeButton.tsx skriver rett
+ * gjennom React-state — samme grunn som Hud.tsx og ModeSwitch.tsx skriver rett
  * til DOM: dette skjer for ofte til at en rerender per bevegelse er verdt det.
  *
  * Utslagsradien måles fra elementene selv, så størrelsen finnes bare ett sted,

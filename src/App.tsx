@@ -14,7 +14,7 @@ import { generateSigns } from './sim/world/signs'
 import { createHeightField } from './sim/world/terrain'
 import { Hud } from './ui/Hud'
 import { Minimap } from './ui/Minimap'
-import { ModeButton } from './ui/ModeButton'
+import { ModeSwitch } from './ui/ModeSwitch'
 import { useModeAttribute } from './ui/useModeAttribute'
 import { useTuning } from './ui/useTuning'
 
@@ -75,8 +75,15 @@ export default function App() {
 
       <TouchZones source={source} swipeThreshold={params.SWIPE_THRESHOLD_PX} store={store} />
       <Sticks source={source} deadzone={params.JOYSTICK_DEADZONE} />
-      <ModeButton source={source} store={store} />
-      <Hud store={store} world={bundle.world} paramsRef={paramsRef} visible={view.showHud} />
+      <ModeSwitch source={source} store={store} />
+      {/* Fart, stigning og de andre tuning-tallene er et utviklerverktøy —
+          de skal ikke følge med i produksjonsbygget, uansett hva Leva-bryteren sier. */}
+      <Hud
+        store={store}
+        world={bundle.world}
+        paramsRef={paramsRef}
+        visible={import.meta.env.DEV && view.showHud}
+      />
       <Minimap
         store={store}
         world={bundle.world}
