@@ -51,8 +51,9 @@ export type GroomerState = {
    */
   lat: number
   /**
-   * Kursavvik fra løypas tangent, radianer. Positiv er mot førerens høyre.
-   * Alltid i `[-GROOMER_MAX_YAW, GROOMER_MAX_YAW]`.
+   * Kursen maskinen peker i, som vinkel fra løypas tangent i `dir`. Positiv er
+   * mot førerens høyre. Fri hele veien rundt — maskinen kan snu i løypa — men
+   * alltid viklet inn i `(-π, π]`.
    */
   yaw: number
 }

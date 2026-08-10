@@ -21,7 +21,8 @@ med navngitte steder og genererte skilt, traversert av to kjøretøy: skiløpere
 - Aldri NaN. Skiløperens `v` er alltid i `[0, MAX_SPEED]`; løypemaskinens `v`
   er fortegnsatt, i `[-GROOMER_MAX_SPEED * GROOMER_REVERSE_FACTOR, GROOMER_MAX_SPEED]`,
   dens sideveis posisjon `lat` er i `[-lateralLimit(p), lateralLimit(p)]`, og
-  kursavviket `yaw` er i `[-GROOMER_MAX_YAW, GROOMER_MAX_YAW]`. Dekket av tester.
+  kursen `yaw` er fri hele veien rundt, men alltid viklet inn i `(-π, π]`.
+  Dekket av tester.
 
 ## Verdenen
 
@@ -45,7 +46,9 @@ med navngitte steder og genererte skilt, traversert av to kjøretøy: skiløpere
   konvergerer alltid, så `MAX_GRADIENT` er et løfte og ikke et ønske.
 - `render/trailField.ts` skjærer terrenget inn mot løypehøyden. Uten det ligger
   den planerte traseen begravd der planeringen skar. Samme oppslag holder
-  trærne ute av sporet. Oppslaget er nærmeste-punkt, så `SAMPLE_SPACING` er
+  trærne ute av sporet: `render/planting.ts` regner korridoren fra feltets
+  `halfWidth` og ut, aldri fra et tall for seg — blir løypa bredere, må skogen
+  flytte seg med. Oppslaget er nærmeste-punkt, så `SAMPLE_SPACING` er
   også hvor grovt bakken trappes langs løypa — trinnet er halve avstanden
   ganger stigningen, og blir det større enn løftet i `TrackRibbons`, stikker
   terrenget opp gjennom løypebåndet i flekker.
@@ -62,14 +65,30 @@ med navngitte steder og genererte skilt, traversert av to kjøretøy: skiløpere
 - Grafen muteres kun gjennom `groomSpan()`. Alt annet i `world/` er lesing.
 - `traversal.advance()` er den ene veien å flytte seg langs grafen. Begge
   kjøretøy bruker den. Default-valget i et kryss er minste retningsendring.
-- Løypa har en bredde, `TRAIL_HALF_WIDTH` til hver side av midtlinja, og
-  prepareringen er delt på tvers i `GROOM_LANE_COUNT` baner. `WorldEdge.groomedAt`
-  er derfor et flatt rutenett — bane × bøtte, indeksert `lane * buckets + bucket`
-  — ikke lenger én dimensjon. Bladet (`GROOMER_BLADE_WIDTH`) dekker bare noen av
-  banene, så hele bredden krever flere passeringer. En bøtte stemples hel så
-  snart maskinen er inne i den, så `GROOM_BUCKET_LENGTH` er også hvor langt
-  foran bladet sporet kan rekke å dukke opp. Skiløperen leser alltid
-  midtbanen (`lat = 0`); hun har ingen sideveis posisjon.
+- Løypa er femten meter bred — `TRAIL_HALF_WIDTH` til hver side av midtlinja —
+  og prepareringen er delt på tvers i `GROOM_LANE_COUNT` baner.
+  `WorldEdge.groomedAt` er derfor et flatt rutenett — bane × bøtte, indeksert
+  `lane * buckets + bucket` — ikke lenger én dimensjon. Bladet
+  (`GROOMER_BLADE_WIDTH`) er en tredel av bredden, så løypa tar tre pass. Bredden
+  er ikke bare pynt: den er maskinens manøvreringsrom, og den er valgt så
+  maskinen kan snu helt rundt uten å komme utenfor løypa. En bøtte stemples hel
+  så snart maskinen er inne i den, så `GROOM_BUCKET_LENGTH` (pluss et halvt blad
+  når maskinen står på skrå) er også hvor langt foran bladet sporet kan rekke å
+  dukke opp. Skiløperen leser alltid midtbanen (`lat = 0`); hun har ingen
+  sideveis posisjon.
+- Bladets avtrykk dreier med kursen: på tvers dekker det `GROOMER_BLADE_WIDTH ·
+  |cos ψ|`, på langs `· |sin ψ|`. Uten den dreiningen kunne man krabbet sidelengs
+  over løypa og fått hele bredden på ett drag. `lateralLimit()` klemmer
+  midtpunktet et halvt blad innenfor løypekanten, og siden en bjelke som dreier
+  om midtpunktet sveiper en sirkel med den radien, holder bladet seg innenfor
+  uansett hvilken vei maskinen peker.
+- Løypemaskinens kurs `yaw` er fri hele veien rundt, målt fra løypas tangent i
+  `dir`. Rattet er en dreiehastighet (`GROOMER_STEER_RATE`, rad/s), ikke et
+  utslag, og virker også i stillstand — beltene snur maskinen på stedet. Bare
+  posisjonen følger grafen: `advance()` får `v · cos ψ`, som gjerne er negativ,
+  og `yaw` følger urørt med gjennom både kryss og blindveisnuinger. Stigningen
+  må projiseres med `cos ψ` (`vehicles/groomer.ts`), ellers får en maskin som
+  snur i motbakke tyngdekraften i ryggen begge veier.
 - Løypemaskinens sideveis posisjon `lat` lagres i kantens eget rom — meter mot
   høyre for `from → to`, samme rom `edgeLateral(edge, s, 1)` og løypebåndet i
   `render/TrackRibbons.tsx` er definert i. Styringen selv regnes i den

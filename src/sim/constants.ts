@@ -70,6 +70,9 @@ export type Params = {
    * Halv løypebredde, meter. Løypa er symmetrisk om midtlinja: et par
    * klassiskspor ute mot hver kant og skøytefeltet mellom dem. Skiløperen
    * renderes fra midtlinja og har ingen sideveis posisjon.
+   *
+   * Bredden er også løypemaskinens manøvreringsrom: den må være romslig nok
+   * til at maskinen kan snu helt rundt uten å forlate løypa.
    */
   TRAIL_HALF_WIDTH: number
 
@@ -107,9 +110,11 @@ export type Params = {
   GROOMER_REVERSE_FACTOR: number
   /** Bredden bladet preparerer, meter. Setter hvor mange pass en løype tar. */
   GROOMER_BLADE_WIDTH: number
-  /** Største kursavvik fra løypas tangent, radianer. Fullt rattutslag. */
-  GROOMER_MAX_YAW: number
-  /** Hvor fort rattet dreier mot ønsket utslag, radianer per sekund. */
+  /**
+   * Hvor fort maskinen dreier ved fullt rattutslag, radianer per sekund.
+   * Kursen er fri hele veien rundt, så dette er en dreiehastighet og ikke et
+   * utslag: beltene kan gå hver sin vei, og maskinen snur også på stedet.
+   */
   GROOMER_STEER_RATE: number
 
   // --- Navigasjon ---
@@ -169,16 +174,18 @@ export const DEFAULTS: Params = {
   // den planere dem bort i stedet — flatere løyper i kupert terreng.
   TERRAIN_AMPLITUDE: 5.5,
   TERRAIN_FREQUENCY: 0.0045,
-  // Seks meter bred: nøyaktig to bladbredder, så løypa krever to pass og
-  // maskinen har en meter og en halv å styre på til hver side.
-  TRAIL_HALF_WIDTH: 3,
+  // Femten meter bred: nøyaktig tre bladbredder, så løypa krever tre pass, og
+  // maskinen har fem meter å styre på til hver side. Det er dét som gjør at
+  // den kan snu helt rundt inne i løypa i stedet for å måtte følge den.
+  TRAIL_HALF_WIDTH: 7.5,
 
   // Kort nok til at sporet dukker opp under maskinen og ikke foran den: en
   // bøtte stemples hel så snart maskinen er inne i den, så bøttelengden er
   // også hvor langt fram prepareringen kan løpe fra bladet.
   GROOM_BUCKET_LENGTH: 3,
-  // Oddetall, så én bane ligger sentrert på midtlinja. Sju baner à ~0.86 m.
-  GROOM_LANE_COUNT: 7,
+  // Oddetall, så én bane ligger sentrert på midtlinja. Femten baner à 1 m,
+  // og bladet dekker nøyaktig fem av dem.
+  GROOM_LANE_COUNT: 15,
   MU_GROOMED: 0.02,
   MU_UNGROOMED: 0.075,
   GROOM_DECAY_TIME: 600,
@@ -188,11 +195,11 @@ export const DEFAULTS: Params = {
   GROOMER_POWER: 4,
   GROOMER_BRAKE: 6,
   GROOMER_REVERSE_FACTOR: 0.5,
-  GROOMER_BLADE_WIDTH: 3,
-  // En halv radian er ~29°. Nok til å krysse løypa på et titalls meter uten
-  // at maskinen ser ut til å kjøre sidelengs.
-  GROOMER_MAX_YAW: 0.5,
-  GROOMER_STEER_RATE: 1.6,
+  GROOMER_BLADE_WIDTH: 5,
+  // En radian i sekundet: helomvending på drøye tre sekunder på stedet, og en
+  // svingradius på seks meter i marsjfart. Skal man snu inne i løypebredden,
+  // må man altså senke farten først — akkurat som med en ekte maskin.
+  GROOMER_STEER_RATE: 1,
 
   JUNCTION_PREVIEW_DISTANCE: 60,
   SWIPE_THRESHOLD_PX: 40,
@@ -234,10 +241,10 @@ export const RANGES: Record<keyof Params, Range> = {
   DIFFICULTY_HARD_GRADIENT: { min: 0.02, max: 0.5, step: 0.005 },
   TERRAIN_AMPLITUDE: { min: 0, max: 40, step: 0.1 },
   TERRAIN_FREQUENCY: { min: 0.0005, max: 0.02, step: 0.0001 },
-  TRAIL_HALF_WIDTH: { min: 1.5, max: 6, step: 0.1 },
+  TRAIL_HALF_WIDTH: { min: 1.5, max: 12, step: 0.1 },
 
   GROOM_BUCKET_LENGTH: { min: 2, max: 50, step: 1 },
-  GROOM_LANE_COUNT: { min: 1, max: 15, step: 2 },
+  GROOM_LANE_COUNT: { min: 1, max: 25, step: 2 },
   MU_GROOMED: { min: 0, max: 0.2, step: 0.001 },
   MU_UNGROOMED: { min: 0, max: 0.3, step: 0.001 },
   GROOM_DECAY_TIME: { min: 10, max: 3600, step: 10 },
@@ -247,9 +254,8 @@ export const RANGES: Record<keyof Params, Range> = {
   GROOMER_POWER: { min: 0.5, max: 20, step: 0.1 },
   GROOMER_BRAKE: { min: 0.5, max: 30, step: 0.1 },
   GROOMER_REVERSE_FACTOR: { min: 0.1, max: 1, step: 0.05 },
-  GROOMER_BLADE_WIDTH: { min: 1, max: 6, step: 0.1 },
-  GROOMER_MAX_YAW: { min: 0.05, max: 1.2, step: 0.01 },
-  GROOMER_STEER_RATE: { min: 0.2, max: 8, step: 0.1 },
+  GROOMER_BLADE_WIDTH: { min: 1, max: 10, step: 0.1 },
+  GROOMER_STEER_RATE: { min: 0.1, max: 4, step: 0.05 },
 
   JUNCTION_PREVIEW_DISTANCE: { min: 10, max: 300, step: 5 },
   SWIPE_THRESHOLD_PX: { min: 10, max: 200, step: 1 },
@@ -313,7 +319,6 @@ export const PARAM_GROUPS: { label: string; keys: (keyof Params)[] }[] = [
       'GROOMER_BRAKE',
       'GROOMER_REVERSE_FACTOR',
       'GROOMER_BLADE_WIDTH',
-      'GROOMER_MAX_YAW',
       'GROOMER_STEER_RATE',
     ],
   },

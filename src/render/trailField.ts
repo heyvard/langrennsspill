@@ -33,6 +33,11 @@ const SHOULDER = 6
 const CELL = 8
 
 export type TrailField = {
+  /**
+   * Halv løypebredde, meter. Den som skal holde noe unna løypa må vite hvor
+   * bred den er — skogen plantes etter dette tallet, ikke etter sitt eget.
+   */
+  halfWidth: number
   /** Avstand til nærmeste løypepunkt. `reach` når det ikke er noen i nærheten. */
   distanceTo(x: number, z: number): number
   /**
@@ -106,6 +111,7 @@ export function buildTrailField(world: World, p: Params): TrailField {
   }
 
   return {
+    halfWidth: inner,
     distanceTo(x, z) {
       const i = nearest(x, z)
       if (i < 0) return reach

@@ -7,8 +7,8 @@ import type { GroomerState, Side, State, StepInput, Tap } from './types'
 import { lateralLimit, stepGroomer } from './vehicles/groomer'
 import { groomedShare, groomSpan } from './vehicles/grooming'
 import { generate } from './world/generate'
-import { clampS } from './world/geometry'
-import { edgeOf, edgesAt, type World } from './world/types'
+import { clampS, edgeGradient } from './world/geometry'
+import { edgeOf, edgesAt, NEVER_GROOMED, type World } from './world/types'
 
 /** Kalles én gang per steg og returnerer tappene som hører til steget. */
 type Tapper = (state: State, p: Params) => Tap[]
@@ -61,6 +61,19 @@ function metronome(alternate: boolean): Tapper {
 const masher: Tapper = (state, p) => [
   { t: state.t, side: Math.floor(state.t / p.FIXED_DT) % 2 === 0 ? 'L' : 'R' },
 ]
+
+/** Hvor mange baner og bøtter i en kant som er stemplet i det hele tatt. */
+function stamped(world: World, edgeId: string): { lanes: number; buckets: number } {
+  const edge = edgeOf(world, edgeId)
+  const lanes = new Set<number>()
+  const buckets = new Set<number>()
+  for (let i = 0; i < edge.groomedAt.length; i++) {
+    if (edge.groomedAt[i] <= NEVER_GROOMED) continue
+    lanes.add(Math.floor(i / edge.buckets))
+    buckets.add(i % edge.buckets)
+  }
+  return { lanes: lanes.size, buckets: buckets.size }
+}
 
 /** Deterministisk «tilfeldig» tapping. */
 function chaotic(): Tapper {
@@ -156,7 +169,7 @@ describe('preparering', () => {
     const world = generate(DEFAULT_SEED, DEFAULTS)
     if (groomedAt !== null) {
       for (const edge of world.edges.values()) {
-        groomSpan(world, edge.id, 0, edge.length, 0, groomedAt, DEFAULTS)
+        groomSpan(world, edge.id, 0, edge.length, 0, 0, groomedAt, DEFAULTS)
       }
     }
     return simulate(seconds, metronome(true), DEFAULTS, world).averageSpeed
@@ -236,7 +249,7 @@ describe('løypemaskinen', () => {
 })
 
 describe('løypemaskinens styring', () => {
-  it('lat og yaw holder seg innenfor grensene under vilkårlig, trinnløs styring', () => {
+  it('lat holder seg i løypa og yaw holder seg viklet under vilkårlig styring', () => {
     const world = generate(DEFAULT_SEED, DEFAULTS)
     const p = DEFAULTS
     const limit = lateralLimit(p)
@@ -259,7 +272,8 @@ describe('løypemaskinens styring', () => {
       expect(Number.isFinite(state.groomer.lat)).toBe(true)
       expect(Number.isFinite(state.groomer.yaw)).toBe(true)
       expect(Math.abs(state.groomer.lat)).toBeLessThanOrEqual(limit + 1e-9)
-      expect(Math.abs(state.groomer.yaw)).toBeLessThanOrEqual(p.GROOMER_MAX_YAW + 1e-9)
+      // Kursen er fri, men den skal aldri vokse ut av (-π, π].
+      expect(Math.abs(state.groomer.yaw)).toBeLessThanOrEqual(Math.PI + 1e-9)
     }
   })
 
@@ -300,6 +314,86 @@ describe('løypemaskinens styring', () => {
 
     expect(Math.abs(half.yaw)).toBeGreaterThan(0)
     expect(Math.abs(half.yaw)).toBeLessThan(Math.abs(full.yaw))
+  })
+
+  it('snur helt rundt på stedet, uten å flytte seg', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const longest = [...world.edges.values()].reduce((a, b) => (a.length > b.length ? a : b))
+    const s = longest.length / 2
+    let state: GroomerState = {
+      placement: { edge: longest.id, s, dir: 1 },
+      v: 0,
+      lat: 0,
+      yaw: 0,
+    }
+
+    // Fullt rattutslag i den tiden en helomvending tar, uten gass.
+    for (let i = 0; i < Math.round(Math.PI / p.GROOMER_STEER_RATE / p.FIXED_DT); i++) {
+      state = stepGroomer(state, 0, 1, 0, p.FIXED_DT, world, p, straightest)
+    }
+
+    expect(Math.abs(state.yaw)).toBeCloseTo(Math.PI, 1)
+    // Beltene snudde den på stedet: ingen fart, ingen forflytning.
+    expect(state.v).toBe(0)
+    expect(state.placement.s).toBeCloseTo(s, 6)
+    expect(state.lat).toBe(0)
+  })
+
+  it('kjører tilbake langs kanten etter å ha snudd, framover og ikke i revers', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const longest = [...world.edges.values()].reduce((a, b) => (a.length > b.length ? a : b))
+    let state: GroomerState = {
+      placement: { edge: longest.id, s: longest.length / 2, dir: 1 },
+      v: 0,
+      lat: 0,
+      yaw: 0,
+    }
+
+    for (let i = 0; i < Math.round(Math.PI / p.GROOMER_STEER_RATE / p.FIXED_DT); i++) {
+      state = stepGroomer(state, 0, 1, 0, p.FIXED_DT, world, p, straightest)
+    }
+    const turned = state
+
+    for (let i = 0; i < Math.round(3 / p.FIXED_DT); i++) {
+      state = stepGroomer(state, 1, 0, 0, p.FIXED_DT, world, p, straightest)
+    }
+
+    // Framover, men ned i s: maskinen kjører tilbake dit den kom fra fordi
+    // den peker den veien nå, ikke fordi den rygger.
+    expect(state.v).toBeGreaterThan(0)
+    expect(state.placement.s).toBeLessThan(turned.placement.s - 5)
+    expect(state.placement.edge).toBe(longest.id)
+  })
+
+  it('kursen bestemmer hvilken vei bakken drar', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+
+    // Et punkt med reell stigning, ellers er det ingenting å måle.
+    let steepest = { edge: '', s: 0, gradient: 0 }
+    for (const edge of world.edges.values()) {
+      for (let s = 10; s < edge.length - 10; s += 5) {
+        const gradient = edgeGradient(edge, s, 1)
+        if (gradient > steepest.gradient) steepest = { edge: edge.id, s, gradient }
+      }
+    }
+    expect(steepest.gradient).toBeGreaterThan(0.05)
+
+    const standing = { placement: { edge: steepest.edge, s: steepest.s, dir: 1 as const }, v: 0, lat: 0 }
+    let uphill: GroomerState = { ...standing, yaw: 0 }
+    let downhill: GroomerState = { ...standing, yaw: Math.PI }
+
+    for (let i = 0; i < Math.round(1 / p.FIXED_DT); i++) {
+      uphill = stepGroomer(uphill, 1, 0, 0, p.FIXED_DT, world, p, straightest)
+      downhill = stepGroomer(downhill, 1, 0, 0, p.FIXED_DT, world, p, straightest)
+    }
+
+    // Samme gass, samme sted, motsatt kurs: den som peker nedover kommer
+    // fortere av gårde. Uten projeksjonen ville begge lest samme motbakke.
+    expect(uphill.v).toBeGreaterThan(0)
+    expect(downhill.v).toBeGreaterThan(uphill.v + 1)
   })
 
   it('styrer mot riktig side, og speilvendt i revers', () => {
@@ -368,23 +462,45 @@ describe('løypemaskinens styring', () => {
     const p = DEFAULTS
     const edge = [...world.edges.values()][0]
 
-    groomSpan(world, edge.id, 0, edge.length, 0, 0, p)
+    groomSpan(world, edge.id, 0, edge.length, 0, 0, 0, p)
     const share = groomedShare(world, edge.id, 0, p)
 
     expect(share).toBeGreaterThan(0)
     expect(share).toBeLessThan(1)
   })
 
-  it('to pass i hver sin ytterstilling dekker hele bredden', () => {
+  it('ytterstillingene og midten dekker hele bredden mellom seg', () => {
     const world = generate(DEFAULT_SEED, DEFAULTS)
     const p = DEFAULTS
     const edge = [...world.edges.values()][0]
     const limit = lateralLimit(p)
 
-    groomSpan(world, edge.id, 0, edge.length, -limit, 0, p)
-    groomSpan(world, edge.id, 0, edge.length, limit, 0, p)
+    // Med innkjørte verdier er det nøyaktig tre pass: bladet er en tredel av
+    // løypebredden, og ytterstillingen legger bladkanten på løypekanten.
+    for (const lat of [-limit, 0, limit]) {
+      groomSpan(world, edge.id, 0, edge.length, lat, 0, 0, p)
+    }
 
     expect(groomedShare(world, edge.id, 0, p)).toBeCloseTo(1, 6)
+  })
+
+  it('bladet dreier med kursen: sidelengs setter det avtrykk på langs, ikke på tvers', () => {
+    const p = DEFAULTS
+    const along = generate(DEFAULT_SEED, p)
+    const across = generate(DEFAULT_SEED, p)
+    const id = [...along.edges.values()][0].id
+
+    // Samme punkt, samme blad, ulik kurs.
+    groomSpan(along, id, 20, 20, 0, 0, 0, p)
+    groomSpan(across, id, 20, 20, 0, Math.PI / 2, 0, p)
+
+    const a = stamped(along, id)
+    const b = stamped(across, id)
+    // På tvers dekker bladet flere baner i én bøtte, sidelengs flere bøtter i
+    // én bane. Ingen av kursene dekker begge deler — ellers kunne man krabbet
+    // sidelengs og fått hele bredden på ett drag.
+    expect(a.lanes).toBeGreaterThan(b.lanes)
+    expect(b.buckets).toBeGreaterThan(a.buckets)
   })
 })
 
