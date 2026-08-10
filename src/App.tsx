@@ -15,12 +15,15 @@ import { createHeightField } from './sim/world/terrain'
 import { Hud } from './ui/Hud'
 import { Minimap } from './ui/Minimap'
 import { ModeSwitch } from './ui/ModeSwitch'
+import { useFullscreenOnFirstTouch } from './ui/useFullscreen'
 import { useModeAttribute } from './ui/useModeAttribute'
 import { useTuning } from './ui/useTuning'
 
 export default function App() {
   const source = useInput()
   const { params, view } = useTuning()
+
+  useFullscreenOnFirstTouch()
 
   // Simuleringen leser parametrene fra en ref, så sliderne slår inn med
   // en gang uten å re-rendre scenen.
