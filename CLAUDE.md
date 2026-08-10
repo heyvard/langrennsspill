@@ -104,12 +104,23 @@ glipper merkes overalt. Med innkjørte verdier gir det ~31 mot ~19 km/t.
 ## Kommandoer
 
     pnpm dev     pnpm test     pnpm world:check     pnpm build     pnpm lint
+    pnpm screenshot
 
 `world:check` kjører generatoren på 50 seeds og krever at hver verden er
 sammenhengende, uten krysninger, uten kanter over `MAX_GRADIENT`, med minst én
 sløyfe og alle POI-er nåbare fra stadion. Den ligger utenfor `pnpm test` fordi
 den er treg og svarer på et annet spørsmål: ikke om koden gjør det den sier,
 men om verdenene den lager er verdt å gå tur i.
+
+`pnpm screenshot` (`scripts/screenshot.mjs`) booter vite og tar et headless
+skjermbilde av `<canvas>` med Playwright/Chromium (WebGL via SwiftShader).
+Laget for økter uten tilkoblet nettleser — f.eks. Claude Code-sesjoner i
+eksterne sandboxer — der `render/`-endringer ellers ikke kan verifiseres
+visuelt. `--build` kjører mot prod-bygget i stedet for dev-serveren,
+`--out <path>` styrer hvor filen havner (default `.claude/screenshots/`,
+gitignored). Krever at Chromium-binæren er hentet én gang med
+`npx playwright install chromium` — trenger nettverkstilgang i sandboxen
+første gang.
 
 ## Utenfor scope nå
 

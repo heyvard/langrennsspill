@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "world:check": "vitest run --config vitest.world.config.ts",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "screenshot": "node scripts/screenshot.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
@@ -30,6 +31,7 @@
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "playwright": "^1.62.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"

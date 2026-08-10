@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Skjermbilder fra pnpm screenshot (scripts/screenshot.mjs)
+.claude/screenshots/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
