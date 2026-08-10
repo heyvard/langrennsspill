@@ -62,7 +62,7 @@ export function useTuning(): { params: Params; view: View } {
     Debug: folder(
       {
         showHud: { value: true, label: 'HUD' },
-        showMinimap: { value: true, label: 'minikart' },
+        showMinimap: { value: false, label: 'minikart' },
         showPerf: { value: false, label: 'r3f-perf' },
       },
       { collapsed: false },
