@@ -88,7 +88,7 @@ export function Scene({
         angle={view.headlightAngle}
       />
       <Groomer store={store} world={world} intensity={view.headlightIntensity * mood.lampFactor} />
-      <FollowCamera store={store} world={world} height={height} />
+      <FollowCamera store={store} world={world} height={height} source={source} />
       {view.showPerf && <Perf position="bottom-left" />}
     </>
   )

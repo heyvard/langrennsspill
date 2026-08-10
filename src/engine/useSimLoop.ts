@@ -3,8 +3,10 @@
  * Rendringen interpolerer mellom prev og curr — den styrer aldri simuleringen.
  *
  * Her oversettes også inndata til den formen simuleringen vil ha den:
- * hendelser fordeles på det faste steget de hører hjemme i, mens hold leses
- * av som nivå.
+ * hendelser fordeles på det faste steget de hører hjemme i, mens hold og
+ * joystick-akser leses av som nivå — tastaturets ±1 og joystickens trinnløse
+ * utslag legges sammen og klemmes til `[-1, 1]`, så begge kan brukes om
+ * hverandre uten at de motvirker hverandre.
  */
 
 import { useFrame } from '@react-three/fiber'
@@ -13,7 +15,7 @@ import { now, type InputEvent, type InputSource } from '../input/useInput'
 import type { Params } from '../sim/constants'
 import { step } from '../sim/physics'
 import { clamp } from '../sim/rng'
-import type { Side, StepInput, Tap } from '../sim/types'
+import type { Mode, Side, StepInput, Tap } from '../sim/types'
 import type { World } from '../sim/world/types'
 import type { SimStore } from './simStore'
 
@@ -22,13 +24,13 @@ const MAX_FRAME_DT = 0.25
 /** Tak på faste steg per bilde. Uten dette kan loopen spiralere. */
 const MAX_STEPS_PER_FRAME = 10
 
-/** Opp er gass, ned er revers, begge eller ingen er tomgang. */
+/** Tastaturets bidrag til gass: opp er full gass, ned er full revers. */
 function throttleFrom(holds: { U: boolean; D: boolean }): -1 | 0 | 1 {
   if (holds.U === holds.D) return 0
   return holds.U ? 1 : -1
 }
 
-/** Rattet: venstre eller høyre, begge er rett fram. */
+/** Tastaturets bidrag til rattet: venstre eller høyre, begge er rett fram. */
 function steerFrom(holds: { L: boolean; R: boolean }): -1 | 0 | 1 {
   if (holds.L === holds.R) return 0
   return holds.R ? 1 : -1
@@ -45,6 +47,8 @@ export function useSimLoop(
   /** Vegg-tid som svarer til sim-tid 0. Oversetter hendelser inn i sim-klokka. */
   const simOrigin = useRef(0)
   const pending = useRef<InputEvent[]>([])
+  /** Forrige bildes modus. Endrer den seg, må et hengende tapp-hold slippes. */
+  const lastMode = useRef<Mode | null>(null)
 
   // Negativ prioritet: R3F sorterer stigende, så simuleringen er ferdig før
   // kamera og kjøretøy leser den. Bare positive prioriteter slår av auto-render.
@@ -55,6 +59,7 @@ export function useSimLoop(
     if (lastWall.current === null) {
       lastWall.current = wall
       simOrigin.current = wall - store.curr.t
+      lastMode.current = store.curr.mode
       return
     }
 
@@ -66,9 +71,18 @@ export function useSimLoop(
       pending.current.push({ ...event, t: event.t - simOrigin.current })
     }
 
+    // Byttet man kjøretøy med en tappflate fortsatt holdt inne, skal ikke
+    // holdet bli hengende og styre det nye kjøretøyet.
+    if (lastMode.current !== null && lastMode.current !== store.curr.mode) {
+      source.setHold('L', false)
+      source.setHold('R', false)
+    }
+    lastMode.current = store.curr.mode
+
     const holds = source.holds()
-    const throttle = throttleFrom(holds)
-    const steer = steerFrom(holds)
+    const axes = source.axes()
+    const throttle = clamp(throttleFrom(holds) + axes.driveY, -1, 1)
+    const steer = clamp(steerFrom(holds) + axes.driveX, -1, 1)
     const dt = p.FIXED_DT
     let steps = 0
 

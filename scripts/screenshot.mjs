@@ -7,7 +7,15 @@ import { chromium } from 'playwright'
 import { createServer, build, preview } from 'vite'
 
 function parseArgs(argv) {
-  const args = { out: '.claude/screenshots/latest.png', width: 1280, height: 800, wait: 1500, build: false }
+  const args = {
+    out: '.claude/screenshots/latest.png',
+    width: 1280,
+    height: 800,
+    wait: 1500,
+    build: false,
+    page: false,
+    groomer: false,
+  }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--out') args.out = argv[++i]
@@ -15,6 +23,11 @@ function parseArgs(argv) {
     else if (a === '--height') args.height = Number(argv[++i])
     else if (a === '--wait') args.wait = Number(argv[++i])
     else if (a === '--build') args.build = true
+    // Fotografer hele siden i stedet for bare <canvas> — DOM-overlays som
+    // joystickene, HUD-en og minikartet er ellers usynlige i bildet.
+    else if (a === '--page') args.page = true
+    // Trykk m før bildet tas, så løypemaskinens UI (joystickene) er synlig.
+    else if (a === '--groomer') args.groomer = true
     else throw new Error(`Ukjent flagg: ${a}`)
   }
   return args
@@ -55,8 +68,18 @@ async function main() {
     await page.waitForSelector('canvas', { timeout: 15000 })
     await page.waitForTimeout(args.wait)
 
-    const canvas = page.locator('canvas').first()
-    await canvas.screenshot({ path: outPath })
+    if (args.groomer) {
+      await page.keyboard.press('m')
+      // Modusbytte prosesseres i sim-loopen, ikke synkront på tastetrykket.
+      await page.waitForTimeout(300)
+    }
+
+    if (args.page) {
+      await page.screenshot({ path: outPath })
+    } else {
+      const canvas = page.locator('canvas').first()
+      await canvas.screenshot({ path: outPath })
+    }
 
     console.log(`Screenshot lagret: ${outPath}`)
     if (consoleIssues.length > 0) {

@@ -7,17 +7,17 @@
  * fingeren lander, også når den siden viser seg å bli et sveip. Et sveip
  * som også ga ett tapp er langt bedre enn et tapp som kom for sent.
  *
- * Halvdelene er alltid ratt for løypemaskinen og alltid tapp for
- * skiløperen — samme hold, ulik betydning avhengig av hvem som styrer.
- * Gass og revers har egne soner nede i hjørnet, men bare i løypemaskinmodus:
- * `data-mode` på rotdiven skrives i en rAF-løkke, akkurat som Hud.tsx skriver
- * rett til DOM i stedet for å re-rendre React for hvert bilde.
+ * Skiløperen leser halvdelene som tapp, akkurat som før. Løypemaskinen
+ * styres nå av joystickene (se Sticks.tsx) — halvdelene gir ikke lenger
+ * L/R-hold eller tapp i den modusen, ellers ville et strøk på skjermen
+ * låst rattet i ytterstilling samtidig som høyre stikke sier noe annet.
+ * Sveipet for å velge retning i et kryss virker fortsatt i begge modi.
  */
 
 import { useEffect, useRef } from 'react'
 import type { SimStore } from '../engine/simStore'
 import type { Side } from '../sim/types'
-import type { HoldKey, InputSource } from './useInput'
+import type { InputSource } from './useInput'
 
 /** Hvor lenge gløden lever, ms. Må matche varigheten i CSS-en. */
 const GLOW_MS = 320
@@ -33,7 +33,6 @@ export function TouchZones({
   swipeThreshold: number
   store: SimStore
 }) {
-  const root = useRef<HTMLDivElement>(null)
   const layer = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, Track>())
 
@@ -50,27 +49,20 @@ export function TouchZones({
     })
   }, [source])
 
-  useEffect(() => {
-    let raf = 0
-    const tick = () => {
-      raf = requestAnimationFrame(tick)
-      const host = root.current
-      if (host) host.dataset.mode = store.curr.mode
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [store])
-
   function sideAt(clientX: number): Side {
     return clientX < window.innerWidth / 2 ? 'L' : 'R'
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     e.preventDefault()
-    e.currentTarget.setPointerCapture(e.pointerId)
     const side = sideAt(e.clientX)
-    pointers.current.set(e.pointerId, { side, x: e.clientX, y: e.clientY, swiped: false })
-    source.setHold(side, true)
+    // Bare skiløperen leser tapp/hold fra halvdelene — løypemaskinen har
+    // joystickene. Gløden tegnes uansett modus, som en bekreftelse på treffet.
+    if (store.curr.mode === 'skier') {
+      e.currentTarget.setPointerCapture(e.pointerId)
+      pointers.current.set(e.pointerId, { side, x: e.clientX, y: e.clientY, swiped: false })
+      source.setHold(side, true)
+    }
     source.pushTap({ side, x: e.clientX, y: e.clientY })
   }
 
@@ -93,30 +85,9 @@ export function TouchZones({
     source.setHold(track.side, false)
   }
 
-  /** Gass- og reverssonene: ren hold, ingen tapp eller sveip. */
-  function throttleHandlers(key: HoldKey) {
-    return {
-      onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-        e.preventDefault()
-        e.stopPropagation()
-        e.currentTarget.setPointerCapture(e.pointerId)
-        source.setHold(key, true)
-      },
-      onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-        e.stopPropagation()
-        source.setHold(key, false)
-      },
-      onPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
-        e.stopPropagation()
-        source.setHold(key, false)
-      },
-    }
-  }
-
   return (
     <div
       className="tap-zones"
-      ref={root}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={release}
@@ -124,8 +95,6 @@ export function TouchZones({
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="glow-layer" ref={layer} />
-      <div className="throttle-zone throttle-up" {...throttleHandlers('U')} />
-      <div className="throttle-zone throttle-down" {...throttleHandlers('D')} />
     </div>
   )
 }

@@ -117,6 +117,8 @@ export type Params = {
   JUNCTION_PREVIEW_DISTANCE: number
   /** Hvor mange piksler pekeren må flytte seg for at det er et sveip. */
   SWIPE_THRESHOLD_PX: number
+  /** Hvor stor del av joystickens utslag som regnes som null. */
+  JOYSTICK_DEADZONE: number
   /** Hvor mange steder det er plass til på ett skilt. */
   SIGN_ENTRY_COUNT: number
   /** Steder lenger unna enn dette kommer ikke på skiltet, meter. */
@@ -191,6 +193,9 @@ export const DEFAULTS: Params = {
 
   JUNCTION_PREVIEW_DISTANCE: 60,
   SWIPE_THRESHOLD_PX: 40,
+  // Nok til at en tommel som hviler i sentrum ikke gir gass, lite nok til at
+  // et lite utslag fortsatt er et lite utslag.
+  JOYSTICK_DEADZONE: 0.12,
   SIGN_ENTRY_COUNT: 3,
   SIGN_MAX_DISTANCE: 6000,
 }
@@ -245,6 +250,7 @@ export const RANGES: Record<keyof Params, Range> = {
 
   JUNCTION_PREVIEW_DISTANCE: { min: 10, max: 300, step: 5 },
   SWIPE_THRESHOLD_PX: { min: 10, max: 200, step: 1 },
+  JOYSTICK_DEADZONE: { min: 0, max: 0.5, step: 0.01 },
   SIGN_ENTRY_COUNT: { min: 1, max: 5, step: 1 },
   SIGN_MAX_DISTANCE: { min: 500, max: 20000, step: 100 },
 }
@@ -313,6 +319,7 @@ export const PARAM_GROUPS: { label: string; keys: (keyof Params)[] }[] = [
     keys: [
       'JUNCTION_PREVIEW_DISTANCE',
       'SWIPE_THRESHOLD_PX',
+      'JOYSTICK_DEADZONE',
       'SIGN_ENTRY_COUNT',
       'SIGN_MAX_DISTANCE',
     ],

@@ -53,14 +53,20 @@ export function lateralLimit(p: Params): number {
 
 export function stepGroomer(
   state: GroomerState,
-  throttle: -1 | 0 | 1,
-  steer: -1 | 0 | 1,
+  rawThrottle: number,
+  rawSteer: number,
   now: number,
   dt: number,
   world: World,
   p: Params,
   chooser: Chooser,
 ): GroomerState {
+  // Begge pådragene er trinnløse, men aldri mer enn fullt utslag: klemmen her
+  // er det som gjør at farts- og kursgrensene holder uansett hva inndatalaget
+  // finner på å sende inn.
+  const throttle = clamp(rawThrottle, -1, 1)
+  const steer = clamp(rawSteer, -1, 1)
+
   const edge = edgeOf(world, state.placement.edge)
   const theta = Math.atan(edgeGradient(edge, state.placement.s, state.placement.dir))
 

@@ -236,7 +236,7 @@ describe('løypemaskinen', () => {
 })
 
 describe('løypemaskinens styring', () => {
-  it('lat og yaw holder seg innenfor grensene under vilkårlig styring', () => {
+  it('lat og yaw holder seg innenfor grensene under vilkårlig, trinnløs styring', () => {
     const world = generate(DEFAULT_SEED, DEFAULTS)
     const p = DEFAULTS
     const limit = lateralLimit(p)
@@ -249,8 +249,10 @@ describe('løypemaskinens styring', () => {
     }
 
     for (let i = 0; i < 20000; i++) {
-      const throttle = (Math.floor(rand() * 3) - 1) as -1 | 0 | 1
-      const steer = (Math.floor(rand() * 3) - 1) as -1 | 0 | 1
+      // Utslag opp til det dobbelte av fullt utslag, med vilje: klemmen inne
+      // i stepGroomer skal holde uansett hva inndatalaget sender.
+      const throttle = rand() * 4 - 2
+      const steer = rand() * 4 - 2
       const input: StepInput = { taps: [], throttle, steer, turn: null, modeToggles: 0 }
       state = step(state, input, p.FIXED_DT, world, p)
 
@@ -259,6 +261,45 @@ describe('løypemaskinens styring', () => {
       expect(Math.abs(state.groomer.lat)).toBeLessThanOrEqual(limit + 1e-9)
       expect(Math.abs(state.groomer.yaw)).toBeLessThanOrEqual(p.GROOMER_MAX_YAW + 1e-9)
     }
+  })
+
+  it('halvt pådrag gir lavere fart enn fullt, over samme tid', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const longest = [...world.edges.values()].reduce((a, b) => (a.length > b.length ? a : b))
+    const start: GroomerState = { placement: { edge: longest.id, s: 5, dir: 1 }, v: 0, lat: 0, yaw: 0 }
+
+    let half = start
+    let full = start
+    for (let i = 0; i < Math.round(3 / p.FIXED_DT); i++) {
+      half = stepGroomer(half, 0.5, 0, 0, p.FIXED_DT, world, p, straightest)
+      full = stepGroomer(full, 1, 0, 0, p.FIXED_DT, world, p, straightest)
+    }
+
+    expect(half.v).toBeGreaterThan(0)
+    expect(half.v).toBeLessThan(full.v)
+  })
+
+  it('halvt rattutslag gir mindre kursavvik enn fullt', () => {
+    const world = generate(DEFAULT_SEED, DEFAULTS)
+    const p = DEFAULTS
+    const longest = [...world.edges.values()].reduce((a, b) => (a.length > b.length ? a : b))
+    let base: GroomerState = { placement: { edge: longest.id, s: longest.length / 2, dir: 1 }, v: 0, lat: 0, yaw: 0 }
+
+    // Kjør opp i fart før vi styrer, ellers gir yaw ingen sideveis effekt å måle.
+    for (let i = 0; i < Math.round(3 / p.FIXED_DT); i++) {
+      base = stepGroomer(base, 1, 0, 0, p.FIXED_DT, world, p, straightest)
+    }
+
+    let half = base
+    let full = base
+    for (let i = 0; i < Math.round(0.3 / p.FIXED_DT); i++) {
+      half = stepGroomer(half, 1, 0.5, 0, p.FIXED_DT, world, p, straightest)
+      full = stepGroomer(full, 1, 1, 0, p.FIXED_DT, world, p, straightest)
+    }
+
+    expect(Math.abs(half.yaw)).toBeGreaterThan(0)
+    expect(Math.abs(half.yaw)).toBeLessThan(Math.abs(full.yaw))
   })
 
   it('styrer mot riktig side, og speilvendt i revers', () => {
