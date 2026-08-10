@@ -77,10 +77,14 @@ export type State = {
 /** Alt spilleren gjør i løpet av ett fast steg. */
 export type StepInput = {
   taps: Tap[]
-  /** -1 revers, 0 tomgang, 1 gass. Bare løypemaskinen bryr seg. */
-  throttle: -1 | 0 | 1
-  /** -1 ratt mot venstre, 0 rett fram, 1 mot høyre. Bare løypemaskinen. */
-  steer: -1 | 0 | 1
+  /**
+   * Gasspådrag i `[-1, 1]`: -1 full revers, 0 tomgang, 1 full gass. Trinnløst,
+   * fordi joysticken er det — tastaturet gir alltid ytterpunktene. Bare
+   * løypemaskinen bryr seg.
+   */
+  throttle: number
+  /** Rattutslag i `[-1, 1]`: negativt mot venstre. Bare løypemaskinen. */
+  steer: number
   /** Sveip registrert i dette steget, eller null. */
   turn: Side | null
   /** Hvor mange ganger M ble trykket i dette steget. */

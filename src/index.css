@@ -1,6 +1,7 @@
 :root {
   --hud-fg: #cfe0f5;
   --hud-dim: #5f7288;
+  --stick-size: 148px;
 }
 
 * {
@@ -75,47 +76,59 @@ canvas {
   }
 }
 
+/* --- Joysticks ------------------------------------------------------------ */
+
 /*
- * Gass og revers for løypemaskinen. Usynlige og uten pekerhendelser i
- * skiløpermodus — data-mode skrives av TouchZones i en rAF-løkke.
+ * De to stikkene for løypemaskinen. Alltid montert, også på desktop (kan dras
+ * med mus), men usynlige og uten pekerhendelser i skiløpermodus — data-mode
+ * skrives på <html> av useModeAttribute i en rAF-løkke.
  */
-.throttle-zone {
-  position: absolute;
-  right: 24px;
-  width: 92px;
-  height: 92px;
-  border-radius: 16px;
+.sticks {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stick {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  width: var(--stick-size);
+  height: var(--stick-size);
+  border-radius: 50%;
   background: rgba(120, 150, 190, 0.14);
   border: 1px solid rgba(120, 150, 190, 0.35);
-  pointer-events: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 150ms ease-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  color: var(--hud-fg);
 }
 
-.throttle-up {
-  bottom: 128px;
+.stick-left {
+  left: calc(env(safe-area-inset-left, 0px) + 24px);
 }
 
-.throttle-up::after {
-  content: "▲";
+.stick-right {
+  right: calc(env(safe-area-inset-right, 0px) + 24px);
 }
 
-.throttle-down {
-  bottom: 24px;
+.stick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border-radius: 50%;
+  background: rgba(207, 224, 245, 0.9);
+  border: 1px solid rgba(120, 150, 190, 0.5);
+  transform: translate(0, 0);
+  will-change: transform;
 }
 
-.throttle-down::after {
-  content: "▼";
-}
-
-.tap-zones[data-mode="groomer"] .throttle-zone {
-  pointer-events: auto;
+:root[data-mode="groomer"] .stick {
   opacity: 1;
+  pointer-events: auto;
 }
 
 /* --- Modusbryter ---------------------------------------------------------- */
@@ -138,6 +151,12 @@ canvas {
   justify-content: center;
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
+  transition: bottom 150ms ease-out;
+}
+
+/* Venstre stikke bor i samme hjørne som modusknappen i løypemaskinmodus. */
+:root[data-mode="groomer"] .mode-button {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--stick-size) + 40px);
 }
 
 /* --- Debug-HUD ---------------------------------------------------------- */
@@ -213,4 +232,10 @@ canvas {
   right: calc(env(safe-area-inset-right, 0px) + 12px);
   pointer-events: none;
   border-radius: 6px;
+  transition: bottom 150ms ease-out;
+}
+
+/* Høyre stikke bor i samme hjørne som minikartet i løypemaskinmodus. */
+:root[data-mode="groomer"] .minimap {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--stick-size) + 28px);
 }

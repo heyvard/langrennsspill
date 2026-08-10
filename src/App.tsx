@@ -2,6 +2,7 @@ import { Canvas } from '@react-three/fiber'
 import { Leva } from 'leva'
 import { useMemo, useRef } from 'react'
 import { createSimStore } from './engine/simStore'
+import { Sticks } from './input/Sticks'
 import { TouchZones } from './input/TouchZones'
 import { useInput } from './input/useInput'
 import { plantForest } from './render/planting'
@@ -14,6 +15,7 @@ import { createHeightField } from './sim/world/terrain'
 import { Hud } from './ui/Hud'
 import { Minimap } from './ui/Minimap'
 import { ModeButton } from './ui/ModeButton'
+import { useModeAttribute } from './ui/useModeAttribute'
 import { useTuning } from './ui/useTuning'
 
 export default function App() {
@@ -46,6 +48,8 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const store = useMemo(() => createSimStore(bundle.world), [bundle])
 
+  useModeAttribute(store)
+
   return (
     <>
       <Canvas
@@ -70,6 +74,7 @@ export default function App() {
       </Canvas>
 
       <TouchZones source={source} swipeThreshold={params.SWIPE_THRESHOLD_PX} store={store} />
+      <Sticks source={source} deadzone={params.JOYSTICK_DEADZONE} />
       <ModeButton source={source} store={store} />
       <Hud store={store} world={bundle.world} paramsRef={paramsRef} visible={view.showHud} />
       <Minimap

@@ -27,6 +27,15 @@ export type Holds = { L: boolean; R: boolean; U: boolean; D: boolean }
 /** Retningene et hold kan ha. Flere enn `Side`, som bare er venstre og høyre. */
 export type HoldKey = keyof Holds
 
+/**
+ * De trinnløse nivåene, hver i `[-1, 1]`. Samme natur som holdene — en
+ * tilstand, ikke et øyeblikk — men med et utslag i stedet for av og på.
+ * `drive*` er gass og ratt, `look*` er kameraet. Tastaturet setter dem aldri.
+ */
+export type Axes = { driveX: number; driveY: number; lookX: number; lookY: number }
+
+export type AxisKey = keyof Axes
+
 type Listener = (hit: TapHit) => void
 
 export type InputSource = {
@@ -34,6 +43,9 @@ export type InputSource = {
   pull(): InputEvent[]
   /** Nivået på holdene nå. Objektet gjenbrukes — ikke ta vare på det. */
   holds(): Holds
+  /** Nivået på aksene nå. Gjenbrukt objekt, som `holds()`. */
+  axes(): Axes
+  setAxis(key: AxisKey, value: number): void
   pushTap(hit: TapHit): void
   pushSwipe(side: Side, hit: TapHit): void
   pushMode(): void
@@ -50,6 +62,7 @@ export function now(): number {
 export function useInput(): InputSource {
   const queue = useRef<InputEvent[]>([])
   const held = useRef<Holds>({ L: false, R: false, U: false, D: false })
+  const levels = useRef<Axes>({ driveX: 0, driveY: 0, lookX: 0, lookY: 0 })
   const listeners = useRef(new Set<Listener>())
 
   const source = useMemo<InputSource>(
@@ -61,6 +74,12 @@ export function useInput(): InputSource {
       },
       holds() {
         return held.current
+      },
+      axes() {
+        return levels.current
+      },
+      setAxis(key, value) {
+        levels.current[key] = Number.isFinite(value) ? value : 0
       },
       pushTap(hit) {
         // Tidsstempelet settes her, så tett på hendelsen som mulig.
@@ -155,12 +174,19 @@ export function useInput(): InputSource {
       if (lower === 'w' || lower === 's') source.setHold(lower === 'w' ? 'U' : 'D', false)
     }
 
-    /** Slipper man tasten mens fanen er borte, kommer keyup aldri. */
+    /**
+     * Slipper man tasten mens fanen er borte, kommer keyup aldri — og en
+     * finger som forsvinner med fanen slipper aldri joysticken heller.
+     */
     function onBlur() {
       source.setHold('L', false)
       source.setHold('R', false)
       source.setHold('U', false)
       source.setHold('D', false)
+      source.setAxis('driveX', 0)
+      source.setAxis('driveY', 0)
+      source.setAxis('lookX', 0)
+      source.setAxis('lookY', 0)
     }
 
     window.addEventListener('keydown', onKeyDown)
