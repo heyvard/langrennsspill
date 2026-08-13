@@ -6,6 +6,14 @@
  * Alt den kjører over blir preparert, også i revers — men bare i det båndet
  * bladet dekker, og løypa er bredere enn bladet.
  *
+ * Kursen `yaw` er fri hele veien rundt, ikke et lite avvik fra løypas tangent:
+ * beltene kan gå hver sin vei, så rattet er en dreiehastighet og maskinen snur
+ * også på stedet. Løypa er bred nok til at den får plass til å snu inne i den.
+ * Det er bare posisjonen som følger grafen — hvilken vei maskinen peker, og
+ * dermed hvilken vei den kjører, bestemmer føreren helt selv. Med `|yaw| > π/2`
+ * går den bakover langs kanten selv om den kjører forover; `advance()` tar
+ * negativ avstand, og fortegnsbokholderiet dens gir riktig `dir` uansett.
+ *
  * Sideveis posisjon er det som gjør styringen til noe annet enn pynt. `lat`
  * lagres i kantens eget rom, meter mot høyre for `from → to`, fordi det er
  * rommet `edgeLateral(edge, s, 1)` og løypebåndet i render/ er definert i.
@@ -23,6 +31,11 @@
  *    ikke sideveis av å snu. Her er det den fysiske `lat` som skal bevares
  *    — ikke `q`, som tvert imot bytter fortegn, siden det som var til
  *    førerens høyre nå er til venstre etter snuen.
+ *
+ * `yaw` følger derimot med urørt gjennom begge: den måles fra tangenten i
+ * `dir`, og `advance()` velger `dir` slik at tangenten peker samme vei i
+ * forhold til maskinen som før. Kursen snur da nøyaktig så mye som krysset
+ * selv svinger — som er dét som får maskinen til å følge grafen rundt hjørnet.
  */
 
 import type { Params } from '../constants'
@@ -42,13 +55,20 @@ function capFor(v: number, p: Params): number {
 /**
  * Hvor langt ut fra midtlinja maskinens midtpunkt får komme, meter.
  *
- * Det er beltene som klemmes, ikke midtpunktet: i ytterstilling ligger
- * bladkanten nøyaktig på løypekanten, og to passeringer i hver sin
- * ytterstilling dekker bredden akkurat. Er bladet bredere enn løypa, blir
- * grensen null og maskinen står i midten.
+ * Det er bladet som klemmes, ikke midtpunktet: en bjelke som dreier om
+ * midtpunktet sveiper en sirkel med halve bladbredden som radius, så et
+ * midtpunkt som holder den avstanden til løypekanten har bladet innenfor
+ * uansett hvilken vei maskinen peker. Det er dét som gjør at kursen kan være
+ * fri uten at maskinen preparerer utenfor løypa. Er bladet bredere enn løypa,
+ * blir grensen null og maskinen står på midtlinja.
  */
 export function lateralLimit(p: Params): number {
   return Math.max(p.TRAIL_HALF_WIDTH - Math.max(p.GROOMER_BLADE_WIDTH, 0) / 2, 0)
+}
+
+/** Bringer en vinkel inn i (-π, π]. Kursen er fri, men den skal ikke vokse. */
+function wrapAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a))
 }
 
 export function stepGroomer(
@@ -68,22 +88,24 @@ export function stepGroomer(
   const steer = clamp(rawSteer, -1, 1)
 
   const edge = edgeOf(world, state.placement.edge)
-  const theta = Math.atan(edgeGradient(edge, state.placement.s, state.placement.dir))
 
-  // Rattet dreier mot ønsket utslag, det står ikke der med en gang. Slipper
-  // man det, blir det stående akkurat der det var — det er ikke fjæret, en
-  // løypemaskin retter seg ikke opp av seg selv. Bare aktiv styring beveger det.
-  let yaw = state.yaw
-  if (steer !== 0) {
-    const wanted = steer * Math.max(p.GROOMER_MAX_YAW, 0)
-    const swing = Math.max(p.GROOMER_STEER_RATE, 0) * dt
-    yaw = state.yaw + clamp(wanted - state.yaw, -swing, swing)
-  }
+  // Rattet er en dreiehastighet, ikke et utslag: holder man det inne, fortsetter
+  // maskinen å snu, hele veien rundt om man vil. Slipper man det, blir kursen
+  // stående der den var — det er ikke fjæret, en løypemaskin retter seg ikke
+  // opp av seg selv. Farten spiller ingen rolle; beltene snur den på stedet.
+  let yaw = wrapAngle(state.yaw + steer * Math.max(p.GROOMER_STEER_RATE, 0) * dt)
   if (!Number.isFinite(yaw)) yaw = 0
 
+  // Stigningen leses langs løypa, men bare den delen maskinen faktisk klatrer.
+  // Løypa er vannrett på tvers, så cos(ψ) er hele projeksjonen: peker maskinen
+  // tvers av løypa, er det ingen bakke å ta, og peker den ned igjen, snur
+  // fortegnet — uten det ville en maskin som snudde i motbakke fått
+  // tyngdekraften i ryggen begge veier.
+  const theta = Math.atan(
+    edgeGradient(edge, state.placement.s, state.placement.dir) * Math.cos(yaw),
+  )
+
   let v = state.v
-  // Stigningen leses langs løypa. At maskinen skrår gjennom den, og dermed
-  // klatrer v·cos(ψ) i sekundet, er innenfor støyen ved et halvt radian.
   const aGravity = -p.G * Math.sin(theta)
   const aDrag = -p.K_DRAG * v * Math.abs(v)
   const aRolling = v === 0 ? 0 : -Math.sign(v) * p.MU_UNGROOMED * p.G * Math.cos(theta)
@@ -106,8 +128,10 @@ export function stepGroomer(
 
   const before = state.placement
 
-  // Rygger man med rattet mot høyre, går maskinen mot venstre — fortegnet på
-  // v ordner det av seg selv.
+  // Farten deles på kursen: `cos ψ` langs løypa, `sin ψ` på tvers. Peker
+  // maskinen bakover langs kanten, blir avstanden negativ, og `advance()` tar
+  // den. Rygger man, går begge deler motsatt vei — fortegnet på v ordner det
+  // av seg selv.
   const limit = lateralLimit(p)
   const steeringDelta = v * Math.sin(yaw) * dt
   const placement = advance(before, v * Math.cos(yaw) * dt, world, chooser)
@@ -128,16 +152,16 @@ export function stepGroomer(
 
   // Ett steg er noen centimeter, så et kryss midt i steget deles i to spenn.
   if (placement.edge === before.edge) {
-    groomSpan(world, before.edge, before.s, placement.s, lat, now, p)
+    groomSpan(world, before.edge, before.s, placement.s, lat, yaw, now, p)
   } else {
-    const moving = v >= 0 ? 1 : -1
-    // Retningen bevegelsen har i hver kants egen s.
+    // Retningen bevegelsen har langs kanten, i den enden av steget den gjelder.
+    const moving = v * Math.cos(yaw) >= 0 ? 1 : -1
     const leftBehind = before.dir * moving === 1 ? edgeOf(world, before.edge).length : 0
     const enteredAt = placement.dir * moving === 1 ? 0 : edgeOf(world, placement.edge).length
     // Posisjonen ved avreise fra den gamle kanten er tilnærmet lat — steget
     // er noen centimeter, forskjellen fra styringen underveis er støy.
-    groomSpan(world, before.edge, before.s, leftBehind, state.lat, now, p)
-    groomSpan(world, placement.edge, enteredAt, placement.s, lat, now, p)
+    groomSpan(world, before.edge, before.s, leftBehind, state.lat, yaw, now, p)
+    groomSpan(world, placement.edge, enteredAt, placement.s, lat, yaw, now, p)
   }
 
   return { placement, v, lat, yaw }

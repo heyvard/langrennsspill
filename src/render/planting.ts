@@ -16,11 +16,13 @@ import { CHUNK_SIZE } from './useStreaming'
 /** Trær per meter løype. Summen over 13 km blir en tett skog. */
 const TREES_PER_METRE = 2.4
 /**
- * Fri korridor på hver side av løypas midtlinje, meter.
- * Må være bredere enn kameraet står ut fra sporet, ellers vokser det
- * trær rett foran linsa.
+ * Fri snø utenfor selve løypekanten, meter. Korridoren regnes fra løypas halve
+ * bredde og ut, aldri fra et tall for seg: en bredere løype må skyve skogen
+ * med seg, ellers står granene inne i løypebåndet.
  */
-const CORRIDOR = 7
+const CLEARANCE = 4
+/** Så smal blir korridoren aldri, uansett hvor smal løypa er satt. */
+const MIN_CORRIDOR = 7
 /** Så langt ut fra løypa trær kan stå, meter. Tåka skjuler resten. */
 const SPREAD = 55
 
@@ -43,6 +45,9 @@ export function plantForest(
   const out: Forest = new Map()
   const position = new Vector3()
   const scale = new Vector3()
+  // Minst så bredt at kameraet, som henger et stykke ut og bak, ikke får
+  // grantopper i linsa.
+  const corridor = Math.max(trails.halfWidth + CLEARANCE, MIN_CORRIDOR)
 
   for (const edge of world.edges.values()) {
     const count = Math.round(edge.length * TREES_PER_METRE)
@@ -61,14 +66,15 @@ export function plantForest(
 
       // u² skyver fordelingen mot korridorkanten — tett vegg nær sporet.
       const u = rng()
-      const distance = (CORRIDOR + (SPREAD - CORRIDOR) * u * u) * (rng() < 0.5 ? -1 : 1)
+      const spread = Math.max(SPREAD, corridor + 1)
+      const distance = (corridor + (spread - corridor) * u * u) * (rng() < 0.5 ? -1 : 1)
       const x = px + (-dz / len) * distance
       const z = pz + (dx / len) * distance
 
       // Serpentinene gjør at løypa svinger tilbake innenfor sin egen
       // korridor, så «sju meter ut fra denne kanten» kan være midt i sporet
       // lenger framme. Spør feltet i stedet for å regne på én kant.
-      if (trails.distanceTo(x, z) < CORRIDOR) continue
+      if (trails.distanceTo(x, z) < corridor) continue
 
       const treeHeight = 5 + rng() * 7
       const radius = 0.55 + rng() * 0.5
